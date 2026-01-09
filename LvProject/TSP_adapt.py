@@ -188,6 +188,9 @@ class TspAdapt(QWidget):
         app = xw.App(visible=False)  # 后台启动 Excel
         checkSheet = 1
         self.setEvent(3)#亮灯
+        if(".xls" not in str(self.file_path) or  ".xlsx" not in str(self.file_path)):
+            self.text_display.setText("!!!!not excel file!!!!")
+            return
         try:
             wb = app.books.open(self.file_path)
             if self.combo.currentText()=="":
