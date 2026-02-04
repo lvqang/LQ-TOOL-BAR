@@ -5,9 +5,8 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QTextEdit, QLin
                              QSizePolicy)
 import socket
 import threading
+import importlib
 
-# 👇 导入外部标签页
-from TSP_adapt import TspAdapt
 
 # class ClientApp(QWidget):
 class ClientApp(QMainWindow):
@@ -35,20 +34,28 @@ class ClientApp(QMainWindow):
         # else:
         #     self.tabs.resize(width, height)  # 设置标签大小
 
+        ######----------增加新标签----------#######
+        tal_list = [
+            #filename       tab name             classname
+            # ("TSP_adapt",   "💬 后台环境适配",     "TspAdapt"),
+            ("GPS_correct",  "📋 GPS校正",         "GpsCorrect"),
+            # (""             "⚙️ 待添加",          self.create_history_tab),
+        ]
+        # 👇 导入外部标签页
+        for filename, name, classname in tal_list:
+            module = importlib.import_module(filename)#动态导入依赖模块# from TSP_adapt import TspAdapt # from GPS_correct import GpsCorrect
+            creator = getattr(module, classname)
+            widget = creator()
+            widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            self.tabs.addTab(widget, name)
 
+
+        # for name, creator in tal_list:
+        #     widget = creator()
+        #     widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        #     self.tabs.addTab(widget, name)
 
         ######----------增加新标签----------#######
-        self.TspAdapt_tab = TspAdapt()
-        self.TspAdapt_tab.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.two_tab = self.create_history_tab()
-
-
-        self.tabs.addTab(self.TspAdapt_tab, "💬 后台环境适配")
-        self.tabs.addTab(self.two_tab, "📋 待添加2")
-        # self.tabs.addTab(self.settings_tab, "⚙️ 设置")
-        # self.tabs.addTab(self.status_tab, "📊 状态")
-
-    ######----------增加新标签----------#######
 
 
         # self.send_button.clicked.connect(self.send_message)  # 发送按钮绑定send_message
