@@ -37,11 +37,14 @@ class ClientApp(QMainWindow):
         ######----------增加新标签----------#######
         tal_list = [
             #filename       tab name             classname
-            # ("TSP_adapt",   "💬 后台环境适配",     "TspAdapt"),
+            ("TSP_adapt",   "💬 后台环境适配",     "TspAdapt"),
             ("GPS_correct",  "📋 GPS校正",         "GpsCorrect"),
             # (""             "⚙️ 待添加",          self.create_history_tab),
         ]
         # 👇 导入外部标签页
+        if False:
+            import TSP_adapt
+            import GPS_correct
         for filename, name, classname in tal_list:
             module = importlib.import_module(filename)#动态导入依赖模块# from TSP_adapt import TspAdapt # from GPS_correct import GpsCorrect
             creator = getattr(module, classname)

@@ -135,13 +135,17 @@ class TspAdapt(QWidget):
                         tmp.append(self.relItmePHex[k+1][x*aline:(x+1)*aline])
                     tmp.append(self.relItmePHex[k+1][((strlenX)*aline):])
                     tmp[strlenX]= tmp[strlenX]+xxxZero[0:aline-(strlen-aline*strlenX)]
+                    print("[]txt：:", self.relItmeP[k], tmp[strlenX])
                     for x in range(totleLen//16):
                         if(x<len(tmp)):
                             self.text_display.append(tmp[x])
                         else:
                             self.text_display.append(xxxZero)
                     fcuk = (totleLen%16)*5
-                    self.text_display.append(xxxZero[0:fcuk])
+                    if (totleLen//16)==strlenX:
+                        self.text_display.append(tmp[strlenX][0:fcuk])
+                    else:
+                        self.text_display.append(xxxZero[0:fcuk])
 
                     self.text_display.append("")#加换行
 
