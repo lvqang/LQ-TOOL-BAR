@@ -73,12 +73,7 @@ class AgentSimulator:
             self.Q = np.diag([0.1, 0.1, 0.01, 0.01, 0.001, 0.001])
 
             # 观测噪声协方差
-            if sensor_type == "radar":
-                self.R = np.diag([10 ** 2, np.radians(0.5) ** 2])  # 雷达测量噪声
-            elif sensor_type == "irst":
-                self.R = np.diag([50 ** 2, np.radians(1) ** 2])  # 红外测量噪声
-            else:  # 融合
-                self.R = np.diag([5 ** 2, 5 ** 2])  # 融合后的测量噪声（假设更低）
+            self.R = np.diag([10 ** 2, 10 ** 2, 20 ** 2])  # 东北天
 
         def predict(self, dt):
             """预测步骤"""
