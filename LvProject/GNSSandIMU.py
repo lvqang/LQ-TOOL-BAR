@@ -49,6 +49,168 @@ class AgentSimulator:
             self.pos_U = h - self.h0
             return [self.pos_N,self.pos_E,self.pos_U]
 
+    class ExtendedKalmanFilter:
+        def __init__(self):
+            self.dt = 0.1  # 时间步长
+
+            # 状态向量: [x, y, vx, vy, ax, ay]
+            self.x = np.zeros(6)  # 初始状态  一维数组全0
+            self.P = np.eye(6) * 1000  # 初始协方差矩阵  生成单位矩阵
+
+            # 状态转移矩阵
+            self.F = np.array(
+                [
+                    [1, 0, self.dt, 0, 0.5 * self.dt ** 2, 0],
+                    [0, 1, 0, self.dt, 0, 0.5 * self.dt ** 2],
+                    [0, 0, 1, 0, self.dt, 0],
+                    [0, 0, 0, 1, 0, self.dt],
+                    [0, 0, 0, 0, 1, 0],
+                    [0, 0, 0, 0, 0, 1],
+                ]
+            )
+
+            # 过程噪声协方差
+            self.Q = np.diag([0.1, 0.1, 0.01, 0.01, 0.001, 0.001])
+
+            # 观测噪声协方差
+            if sensor_type == "radar":
+                self.R = np.diag([10 ** 2, np.radians(0.5) ** 2])  # 雷达测量噪声
+            elif sensor_type == "irst":
+                self.R = np.diag([50 ** 2, np.radians(1) ** 2])  # 红外测量噪声
+            else:  # 融合
+                self.R = np.diag([5 ** 2, 5 ** 2])  # 融合后的测量噪声（假设更低）
+
+        def predict(self, dt):
+            """预测步骤"""
+            if dt != self.dt:
+                self.dt = dt
+                self.F = np.array(
+                    [
+                        [1, 0, self.dt, 0, 0.5 * self.dt ** 2, 0],
+                        [0, 1, 0, self.dt, 0, 0.5 * self.dt ** 2],
+                        [0, 0, 1, 0, self.dt, 0],
+                        [0, 0, 0, 1, 0, self.dt],
+                        [0, 0, 0, 0, 1, 0],
+                        [0, 0, 0, 0, 0, 1],
+                    ]
+                )
+
+            self.x = self.F @ self.x
+            self.P = self.F @ self.P @ self.F.T + self.Q
+
+            return self.x.copy()
+
+        def update(self, z, sensor_pos):
+            """更新步骤（处理非线性观测）"""
+            if self.sensor_type in ["radar", "irst"]:
+                # 极坐标观测（非线性）
+                H = self._calculate_jacobian(self.x, sensor_pos)
+                z_pred = self._h(self.x, sensor_pos)  # 预测观测
+            else:  # 融合后的线性观测
+                H = np.array([[1, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0]])
+                z_pred = H @ self.x
+
+            # 计算残差
+            y = z - z_pred
+
+            # 角度残差归一化到[-π, π]
+            if self.sensor_type in ["radar", "irst"]:
+                y[1] = (y[1] + np.pi) % (2 * np.pi) - np.pi
+
+            # 计算卡尔曼增益
+            S = H @ self.P @ H.T + self.R
+            K = self.P @ H.T @ np.linalg.inv(S)
+
+            # 更新状态和协方差
+            self.x += K @ y
+            self.P = (np.eye(6) - K @ H) @ self.P
+
+            return self.x.copy()
+
+        def fuse_measurements(self, measurements, sensor_pos):
+            """融合来自多个传感器的测量（改进的融合逻辑）"""
+            # 先进行标准预测
+            self.predict(self.dt)
+
+            # 计算融合后的测量值（简化的加权平均）
+            z_fused = np.zeros(2)  # 2×1
+            R_fused_inv = np.zeros((2, 2))  # 2×2
+
+            for sensor_type, z in measurements.items():
+                if sensor_type == "radar":
+                    R = np.diag([10 ** 2, np.radians(0.5) ** 2])
+                elif sensor_type == "irst":
+                    R = np.diag([50 ** 2, np.radians(1) ** 2])  # R xy=J⋅ Rrθ⋅ JT注意此处是否也需要对R进求偏导得到雅可比J
+                else:
+                    continue
+
+                R_inv = np.linalg.inv(R)
+                R_fused_inv += R_inv
+
+                # 转换到全局坐标系
+                if sensor_type in ["radar", "irst"]:
+                    z_global = self._polar_to_cartesian(z, sensor_pos)
+                else:
+                    z_global = z
+
+                z_fused += R_inv @ z_global
+
+            # 计算融合后的测量和协方差
+            R_fused = np.linalg.inv(R_fused_inv)
+            z_fused = R_fused @ z_fused
+
+            # 使用融合后的测量更新滤波器
+            H = np.array([[1, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0]])  # 线性观测矩阵
+            z_pred = H @ self.x
+            y = z_fused - z_pred
+
+            S = H @ self.P @ H.T + R_fused
+            K = self.P @ H.T @ np.linalg.inv(S)
+
+            self.x += K @ y
+            self.P = (np.eye(6) - K @ H) @ self.P
+
+        def _h(self, x, sensor_pos):
+            """观测函数（状态到测量的映射）"""
+            if self.sensor_type in ["radar", "irst"]:
+                dx = x[0] - sensor_pos[0]
+                dy = x[1] - sensor_pos[1]
+                # 添加小量避免除零
+                dx = max(dx, 1e-10)
+                dy = max(dy, 1e-10)
+                r = np.sqrt(dx ** 2 + dy ** 2)
+                theta = np.arctan2(dy, dx)
+                return np.array([r, theta])
+            else:  # 融合后直接观测位置
+                return np.array([x[0], x[1]])
+
+        def _calculate_jacobian(self, x, sensor_pos):
+            """计算观测函数的雅可比矩阵"""
+            if self.sensor_type in ["radar", "irst"]:
+                dx = x[0] - sensor_pos[0]
+                dy = x[1] - sensor_pos[1]
+                # 添加小量避免除零
+                r_squared = dx ** 2 + dy ** 2 + 1e-10
+                r = np.sqrt(r_squared)
+
+                # 雅可比矩阵  非线性测量矩阵H需要进行对状态变量求偏导hx={{(dx**2+dy**2)**0.5,0,0...},{arctan2(dy,dx),0,0...}}
+                H = np.array(
+                    [
+                        [dx / r, dy / r, 0, 0, 0, 0],
+                        [-dy / r_squared, dx / r_squared, 0, 0, 0, 0],
+                    ]
+                )
+                return H
+            else:  # 线性观测矩阵
+                return np.array([[1, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0]])
+
+        def _polar_to_cartesian(self, z, sensor_pos):
+            """将极坐标测量转换为笛卡尔坐标"""
+            r, theta = z
+            x = sensor_pos[0] + r * np.cos(theta)
+            y = sensor_pos[1] + r * np.sin(theta)
+            return np.array([x, y])
+
     class NetworkNode:
         def __init__(self):
             self.pos = np.array(
@@ -131,9 +293,12 @@ class AgentSimulator:
                 q1 = self.q1
                 q2 = self.q2
                 q3 = self.q3
-                self.G1 = [q0**2+q1**2+q2**2+q3**2, 2*(q1*q2+q0*q3), 2*(q1*q3-q0*q2)]   #惯性系->机体系
-                self.G2 = [2*(q1*q2-q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)]  # 惯性系->机体系
-                self.G3 = [2*(q1*q3+q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2]  # 惯性系->机体系
+                self.G[3][3] ={ {q0**2+q1**2+q2**2+q3**2, 2*(q1*q2+q0*q3), 2*(q1*q3-q0*q2)}   #惯性系->机体系
+                                {2*(q1*q2-q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)}  # 惯性系->机体系
+                                {2*(q1*q3+q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2} }  # 惯性系->机体系
+                self.GT[3][3]={ {q0**2+q1**2+q2**2+q3**2, 2*(q1*q2-q0*q3), 2*(q1*q3+q0*q2)}   #惯性系->机体系
+                                {2*(q1*q2+q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)}  # 惯性系->机体系
+                                {2*(q1*q3-q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2} }  # 惯性系->机体系
                 self.gravityX = 0
                 self.gravityY = 0
                 self.gravityZ = 0
@@ -163,7 +328,7 @@ class AgentSimulator:
                 q3 = self.q3
                 self.gravityX = 2*(q1*q3-q0*q2)
                 self.gravityY = 2*(q2*q3-q0*q1)
-                self.gravityZ = 1-2*(q1**2+q2**2)
+                self.gravityZ = 2*(q1**2+q2**2)-1#应该是-1
 
                 Acc = self.sensors["G-sensor"].measure()
                 self.AccX = Acc[0]
@@ -246,12 +411,50 @@ class AgentSimulator:
                 self.Mag_lpY += 6.28 * 40 * self.halftime * (self.MagY - self.Mag_lpY)
                 self.Mag_lpZ += 6.28 * 40 * self.halftime * (self.MagZ - self.Mag_lpZ)
                 #机体系转为惯性系
+                # norqul = np.sqrt(self.gravityX**2+self.gravityY**2+self.gravityZ**2)
+                # graX = self.gravityX / norqul
+                # graY = self.gravityY / norqul
+                # graZ = self.gravityZ / norqul
+                # norqul = np.sqrt(self.Mag_lpX ** 2 + self.Mag_lpY ** 2 + self.Mag_lpZ ** 2)
+                # MagX = self.Mag_lpX / norqul
+                # MagY = self.Mag_lpY / norqul
+                # MagZ = self.Mag_lpZ / norqul
+                # gx=0
+                # gy=0
+                # gz=-1
+                q0 = self.q0
+                q1 = self.q1
+                q2 = self.q2
+                q3 = self.q3
+                self.G[3][3] ={ {q0**2+q1**2+q2**2+q3**2, 2*(q1*q2+q0*q3), 2*(q1*q3-q0*q2)}   #惯性系->机体系
+                                {2*(q1*q2-q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)}  # 惯性系->机体系
+                                {2*(q1*q3+q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2} }  # 惯性系->机体系
+                self.GT[3][3]={ {q0**2+q1**2+q2**2+q3**2, 2*(q1*q2-q0*q3), 2*(q1*q3+q0*q2)}   #惯性系->机体系
+                                {2*(q1*q2+q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)}  # 惯性系->机体系
+                                {2*(q1*q3-q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2} }  # 惯性系->机体系
 
+                MagX = self.Mag_lpX
+                MagY = self.Mag_lpY
+                MagZ = self.Mag_lpZ
+                MagProX = self.GT[0][0]*MagX+self.GT[0][1]*MagY+self.GT[0][2]*MagZ
+                MagProY = self.GT[1][0]*MagX+self.GT[1][1]*MagY+self.GT[1][2]*MagZ
+                MagProZ = self.GT[2][0]*MagX+self.GT[2][1]*MagY+self.GT[2][2]*MagZ
+                norqul = np.sqrt(MagProX ** 2 + MagProY ** 2 + MagProZ ** 2)
 
+                yaw_correct = IMU_YAW
+                if MagProX!=0 and MagProY!=0 and MagProZ!=0:
+                    yaw_mag = np.atan2(MagProY/norqul,MagProX/norqul)*DEG_ANG
+                    yaw_correct = Kp*0.8* self.To_180_degrees(yaw_mag - IMU_YAW)
 
-                return np.array([IMU_YAW, IMU_PITCH, IMU_ROLL])
+                return np.array([yaw_correct, IMU_PITCH, IMU_ROLL])
 
-
+            def To_180_degrees(self, x):
+                k=0
+                if(x>180):
+                    k=x-180
+                elif(x<-180):
+                    k=x+180
+                return k
             class Gsensor:
                 def __init__(self):
                     self.miu_x = 0
