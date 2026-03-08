@@ -9,10 +9,12 @@ from matplotlib import rcParams
 class AgentSimulator:
 
     def __init__(self):
+        lat0 = 23.108
+        lon0 = 113.2647
+        self.mycar = self.MyCar(lat0,lon0)
+        self.mynw =  self.NetworkNode()
+        self.mykalm = self.ExtendedKalmanFilter()
 
-        self.targets = [self.MovingTarget(i) for i in range(num_targets)]
-        self.nodes = [self.NetworkNode(i) for i in range(num_nodes)]
-        self.time = 0  # 当前仿真时间
 
     class MyCar:
 
@@ -23,17 +25,6 @@ class AgentSimulator:
             a = 6378137.0  # WGS84地球长半轴（米）
             e2 = 0.00669437999014  # WGS84第一偏心率平方
             self.N = a / np.sqrt(1 - e2 * np.sin(lat0) ^ 2)  # 卯酉圈曲率半径
-
-
-            self.car_pos = np.array(
-                [np.random.uniform(-100, 100), np.random.uniform(-100, 100)]
-            )
-            self.vel = np.array([np.random.uniform(-5, 5), np.random.uniform(-5, 5)])
-            self.acc = np.array([0, 0])
-            self.motion_mode = "constant_velocity"  # 初始运动模式
-            self.mode_switch_prob = 0.02  # 每步切换运动模式的概率
-            self.last_switch_time = 0
-            self.time = 0
 
         def carUpdate(self, next_lat, next_lon, next_h=10, higt_fixed=1, dt=0.1):
 
@@ -47,23 +38,38 @@ class AgentSimulator:
             self.pos_E = (next_lon - self.lon0) * (self.N + self.h0) * cos(self.lat0)
             # 天方向（U）
             self.pos_U = h - self.h0
-            return [self.pos_N,self.pos_E,self.pos_U]
+            return [self.pos_N,self.pos_E]
 
     class ExtendedKalmanFilter:
-        def __init__(self):
+        def __init__(self, sta, x, y):
             self.dt = 0.1  # 时间步长
 
             # 状态向量: [x, y, vx, vy, ax, ay]
             self.x = np.zeros(6)  # 初始状态  一维数组全0
+            if(sta==1):#定位有效
+                self.x[0]=x
+                self.x[1] = y
+
             self.P = np.eye(6) * 1000  # 初始协方差矩阵  生成单位矩阵
 
             # 状态转移矩阵
-            self.F = np.array(
+            self.A = np.array(
                 [
                     [1, 0, self.dt, 0, 0.5 * self.dt ** 2, 0],
                     [0, 1, 0, self.dt, 0, 0.5 * self.dt ** 2],
                     [0, 0, 1, 0, self.dt, 0],
                     [0, 0, 0, 1, 0, self.dt],
+                    [0, 0, 0, 0, 1, 0],
+                    [0, 0, 0, 0, 0, 1],
+                ]
+            )
+
+            self.B = np.array(
+                [
+                    [0.5 * self.dt ** 2, 0, 0, 0, 0, 0],
+                    [0, 0.5 * self.dt ** 2, 0, 0, 0, 0],
+                    [0, 0, self.dt, 0, 0, 0],
+                    [0, 0, 0, self.dt, 0, 0],
                     [0, 0, 0, 0, 1, 0],
                     [0, 0, 0, 0, 0, 1],
                 ]
@@ -75,11 +81,11 @@ class AgentSimulator:
             # 观测噪声协方差
             self.R = np.diag([10 ** 2, 10 ** 2, 20 ** 2])  # 东北天
 
-        def predict(self, dt):
+        def predict(self, dt, accx,accy):
             """预测步骤"""
             if dt != self.dt:
                 self.dt = dt
-                self.F = np.array(
+                self.A = np.array(
                     [
                         [1, 0, self.dt, 0, 0.5 * self.dt ** 2, 0],
                         [0, 1, 0, self.dt, 0, 0.5 * self.dt ** 2],
@@ -90,27 +96,34 @@ class AgentSimulator:
                     ]
                 )
 
-            self.x = self.F @ self.x
-            self.P = self.F @ self.P @ self.F.T + self.Q
+            self.u = np.array(
+                [
+                    [0],
+                    [0],
+                    [0],
+                    [0],
+                    [accx],
+                    [accy],
+                ]
+            )
+            self.x = self.A @ self.x + self.B @ self.u
+            self.P = self.A @ self.P @ self.A.T + self.Q
 
             return self.x.copy()
 
-        def update(self, z, sensor_pos):
-            """更新步骤（处理非线性观测）"""
-            if self.sensor_type in ["radar", "irst"]:
-                # 极坐标观测（非线性）
-                H = self._calculate_jacobian(self.x, sensor_pos)
-                z_pred = self._h(self.x, sensor_pos)  # 预测观测
-            else:  # 融合后的线性观测
-                H = np.array([[1, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0]])
-                z_pred = H @ self.x
-
+        def update(self,x,y):
+            #观测值
+            H = np.array([[1, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0]])
+            z_pred = H @ self.x
+            z = np.array([
+                    [x],
+                    [y],
+                    [0],
+                    [0],
+                    [0],
+                    [0],])
             # 计算残差
             y = z - z_pred
-
-            # 角度残差归一化到[-π, π]
-            if self.sensor_type in ["radar", "irst"]:
-                y[1] = (y[1] + np.pi) % (2 * np.pi) - np.pi
 
             # 计算卡尔曼增益
             S = H @ self.P @ H.T + self.R
@@ -125,7 +138,7 @@ class AgentSimulator:
         def fuse_measurements(self, measurements, sensor_pos):
             """融合来自多个传感器的测量（改进的融合逻辑）"""
             # 先进行标准预测
-            self.predict(self.dt)
+            # self.predict(self.dt)
 
             # 计算融合后的测量值（简化的加权平均）
             z_fused = np.zeros(2)  # 2×1
@@ -208,50 +221,7 @@ class AgentSimulator:
 
     class NetworkNode:
         def __init__(self):
-            self.pos = np.array(
-                [np.random.uniform(-150, 150), np.random.uniform(-150, 150)]
-            )
-            # 传递当前节点给传感器
-            self.sensors = {
-                "radar": self.RadarSensor(self),
-                "irst": self.IRSensor(self),
-            }
-            self.filters = {}  # 每个目标一个滤波器
-            self.comms = DataLinkTransceiver()
-
-        def init_filters(self, targets):
-            """初始化目标滤波器"""
-            for target in targets:
-                self.filters[target.id] = {
-                    "radar": ExtendedKalmanFilter(target.id, sensor_type="radar"),
-                    "irst": ExtendedKalmanFilter(target.id, sensor_type="irst"),
-                    "fused": ExtendedKalmanFilter(target.id, sensor_type="fused"),
-                }
-
-        def sense_and_filter(self, target, dt):
-            """对目标进行感知并滤波"""
-            target_id = target.id
-            measurements = {}
-
-            # 生成各传感器测量值
-            for sensor_type, sensor in self.sensors.items():
-                if sensor.detect(target.pos):
-                    measurements[sensor_type] = sensor.measure(target.pos)
-
-            # 对每个传感器进行滤波
-            for sensor_type in measurements:
-                filter_ = self.filters[target_id][sensor_type]
-                filter_.predict(dt)
-                filter_.update(measurements[sensor_type], self.pos)  # 传递传感器位置
-
-            # 融合所有可用传感器数据（改进的融合逻辑）
-            if len(measurements) > 1:  # 仅当有多个传感器时融合
-                fused_filter = self.filters[target_id]["fused"]
-                fused_filter.predict(dt)
-                fused_filter.fuse_measurements(measurements, self.pos)
-
-            return measurements
-
+            myQua = IMUQuaternion()
 
         class IMUQuaternion:
             def __init__(self, inist = 0):
@@ -513,39 +483,295 @@ class AgentSimulator:
                     return auto
 
 
+class BattlefieldVisualizer:
+
+    def __init__(self, simulator):
+        self.sim = simulator
+        self.fig, (self.ax, self.error_ax) = plt.subplots(1, 2, figsize=(18, 8))
+        self.ax.set_xlim(-200, 200)
+        self.ax.set_ylim(-200, 200)
+        self.ax.set_xlabel("X坐标 (m)")
+        self.ax.set_ylabel("Y坐标 (m)")
+        self.ax.set_title("卡尔曼传感器融合模拟")
+
+        # 初始化绘图元素
+        # self.mathpos = self.ax.scatter(
+        #     [], [], c="red", marker="o", s=50, label="MATH"
+        # )
+        # self.gpspos = self.ax.scatter(
+        #     [], [], c="black", marker="x", s=100, label="GPS"
+        # )
+        # self.kalmpos = self.ax.scatter(
+        #     [], [], c="blue", marker="|", s=150, label="Kalm"
+        # )
+        (self.gpspos,) = self.ax.plot(
+            [], [], "k.", markersize=4, alpha=0.3, label="GPS定位"
+        )
+        (self.mathpos,) = self.ax.plot(
+            [], [], "r.", markersize=4, alpha=0.3, label="动力学预测"
+        )
+        (self.kalmpos,) = self.ax.plot(
+            [], [], "b.", markersize=4, alpha=0.3, label="卡尔曼融合"
+        )
+
+
+
+        # 误差椭圆（协方差可视化）
+        # self.error_ellipses = []
+        # for target_id in range(self.sim.num_targets):
+        #     ellipse = Ellipse(
+        #         xy=(0, 0),
+        #         width=2,
+        #         height=2,
+        #         angle=0,
+        #         color="purple",
+        #         alpha=0.3,
+        #         label="融合误差椭圆" if target_id == 0 else "",
+        #     )
+        #     self.ax.add_patch(ellipse)
+        #     self.error_ellipses.append(ellipse)
+
+        # 误差统计图表
+        self.error_ax.set_title("误差")
+        self.error_ax.set_xlabel("时间步")
+        self.error_ax.set_ylabel("误差 (m)")
+
+        (self.math_gps,) = self.ax.plot(
+            [], [], "k.", markersize=4, alpha=0.3, label="MATH-GPS"
+        )
+        (self.kalm_gps,) = self.ax.plot(
+            [], [], "r.", markersize=4, alpha=0.3, label="KALM-GPS"
+        )
+
+
+
+        # 历史数据存储
+        self.gps_pos = []
+        self.math_pos = []
+        self.kalm_pos = []
+
+        self.math_gps_pos = []
+        self.kalm_gps_pos = []
+
+        # 图例
+        self.ax.legend(loc="upper right", fontsize=8)
+        self.error_ax.legend(loc="upper right", fontsize=8)
+
+        #获取定位并存储  从日志中获取
+        self.pos = []
+
+
+    def update(self, frame):
+        """动画更新函数"""
+        # 更新所有目标
+        sim = self.sim
+        #获取相对起始点的位移
+        haha = sim.mycar.carUpdate(self.pos[frame][0],self.pos[frame][1])
+        self.gps_pos.append(haha)
 
 
 
 
+        # 更新绘图数据
+        true_positions = np.array([t.pos for t in self.sim.targets])
+        node_positions = np.array([n.pos for n in self.sim.nodes])
 
+        # 更新散点图
+        self.targets_scat.set_offsets(true_positions)
+        self.nodes_scat.set_offsets(node_positions)
 
+        # 更新测量点
+        if radar_measurements:
+            radar_pts = np.array(radar_measurements)
+            self.radar_meas.set_data(radar_pts[:, 0], radar_pts[:, 1])
 
+        if irst_measurements:
+            irst_pts = np.array(irst_measurements)
+            self.irst_meas.set_data(irst_pts[:, 0], irst_pts[:, 1])
 
+        # 更新轨迹
+        for target_id, target in enumerate(self.sim.targets):
+            self.true_pos_history[target_id].append(target.pos)
 
+            # 从第一个节点获取滤波结果
+            node = self.sim.nodes[0]
+            radar_filter = node.filters[target_id]["radar"]
+            irst_filter = node.filters[target_id]["irst"]
+            fused_filter = node.filters[target_id]["fused"]
 
+            # 预测所有滤波器状态（即使没有新测量）
+            # radar_filter.predict(0.1)
+            # irst_filter.predict(0.1)
+            # fused_filter.predict(0.1)
 
+            # 存储估计位置
+            radar_pos = radar_filter.x[:2]
+            irst_pos = irst_filter.x[:2]
+            fused_pos = fused_filter.x[:2]
 
+            self.radar_pos_history[target_id].append(radar_pos)
+            self.irst_pos_history[target_id].append(irst_pos)
+            self.fused_pos_history[target_id].append(fused_pos)
 
+            # 计算误差
+            radar_error = np.linalg.norm(target.pos - radar_pos)
+            irst_error = np.linalg.norm(target.pos - irst_pos)
+            fused_error = np.linalg.norm(target.pos - fused_pos)
 
+            self.radar_error_history[target_id].append(radar_error)
+            self.irst_error_history[target_id].append(irst_error)
+            self.fused_error_history[target_id].append(fused_error)
 
+            # 更新轨迹线
+            self.true_trajs[target_id].set_data(
+                [pos[0] for pos in self.true_pos_history[target_id]],
+                [pos[1] for pos in self.true_pos_history[target_id]],
+            )
 
+            self.radar_trajs[target_id].set_data(
+                [pos[0] for pos in self.radar_pos_history[target_id]],
+                [pos[1] for pos in self.radar_pos_history[target_id]],
+            )
 
+            self.irst_trajs[target_id].set_data(
+                [pos[0] for pos in self.irst_pos_history[target_id]],
+                [pos[1] for pos in self.irst_pos_history[target_id]],
+            )
 
+            self.fused_trajs[target_id].set_data(
+                [pos[0] for pos in self.fused_pos_history[target_id]],
+                [pos[1] for pos in self.fused_pos_history[target_id]],
+            )
 
+            # 更新误差椭圆
+            P = fused_filter.P
+            eigenvalues, eigenvectors = np.linalg.eig(P[:2, :2])
+            angle = np.degrees(np.arctan2(eigenvectors[1, 0], eigenvectors[0, 0]))
+            width, height = 2 * np.sqrt(eigenvalues)
 
+            self.error_ellipses[target_id].center = fused_filter.x[0], fused_filter.x[1]
+            self.error_ellipses[target_id].width = width
+            self.error_ellipses[target_id].height = height
+            self.error_ellipses[target_id].angle = angle
 
+            # 更新误差图
+            self.radar_error_lines[target_id].set_data(
+                range(len(self.radar_error_history[target_id])),
+                self.radar_error_history[target_id],
+            )
 
+            self.irst_error_lines[target_id].set_data(
+                range(len(self.irst_error_history[target_id])),
+                self.irst_error_history[target_id],
+            )
 
+            self.fused_error_lines[target_id].set_data(
+                range(len(self.fused_error_history[target_id])),
+                self.fused_error_history[target_id],
+            )
 
+        # 调整误差图坐标轴
+        self.error_ax.relim()
+        self.error_ax.autoscale_view()
 
+        # 更新时间
+        self.sim.time += 0.1
 
+        # 返回所有需要重绘的对象
+        return (
+            (self.targets_scat, self.nodes_scat, self.radar_meas, self.irst_meas)
+            + tuple(self.true_trajs)
+            + tuple(self.radar_trajs)
+            + tuple(self.irst_trajs)
+            + tuple(self.fused_trajs)
+            + tuple(self.error_ellipses)
+            + tuple(self.radar_error_lines)
+            + tuple(self.irst_error_lines)
+            + tuple(self.fused_error_lines)
+        )
 
+    def calculate_accuracy_metrics(self):
+        """计算并返回精度指标"""
+        metrics = {}
+        for target_id in range(self.sim.num_targets):
+            radar_errors = self.radar_error_history[target_id]
+            irst_errors = self.irst_error_history[target_id]
+            fused_errors = self.fused_error_history[target_id]
+
+            if not fused_errors:
+                continue
+
+            metrics[target_id] = {
+                "radar": {
+                    "rmse": np.sqrt(np.mean(np.square(radar_errors))),
+                    "mae": np.mean(radar_errors),
+                    "max": np.max(radar_errors),
+                    "min": np.min(radar_errors),
+                },
+                "irst": {
+                    "rmse": np.sqrt(np.mean(np.square(irst_errors))),
+                    "mae": np.mean(irst_errors),
+                    "max": np.max(irst_errors),
+                    "min": np.min(irst_errors),
+                },
+                "fused": {
+                    "rmse": np.sqrt(np.mean(np.square(fused_errors))),
+                    "mae": np.mean(fused_errors),
+                    "max": np.max(fused_errors),
+                    "min": np.min(fused_errors),
+                },
+            }
+
+        return metrics
+
+    def print_accuracy_report(self):
+        """打印精度报告"""
+        metrics = self.calculate_accuracy_metrics()
+
+        if not metrics:
+            print("无有效误差数据")
+            return
+
+        print("\n===== 目标跟踪精度报告 =====")
+
+        for target_id, target_metrics in metrics.items():
+            print(f"\n目标 {target_id+1}:")
+
+            for sensor_type, stats in target_metrics.items():
+                sensor_name = {"radar": "雷达", "irst": "红外", "fused": "融合"}.get(
+                    sensor_type, sensor_type
+                )
+
+                print(f"\n  {sensor_name} 传感器:")
+                print(f"    RMSE: {stats['rmse']:.2f} m")
+                print(f"    MAE:  {stats['mae']:.2f} m")
+                print(f"    最大误差: {stats['max']:.2f} m")
+                print(f"    最小误差: {stats['min']:.2f} m")
+
+        # 计算总体平均误差
+        if metrics:
+            overall_radar_mae = np.mean([m["radar"]["mae"] for m in metrics.values()])
+            overall_irst_mae = np.mean([m["irst"]["mae"] for m in metrics.values()])
+            overall_fused_mae = np.mean([m["fused"]["mae"] for m in metrics.values()])
+
+            print(f"\n===== 总体性能对比 =====")
+            print(f"  雷达平均误差: {overall_radar_mae:.2f} m")
+            print(f"  红外平均误差: {overall_irst_mae:.2f} m")
+            print(f"  融合平均误差: {overall_fused_mae:.2f} m")
+            if overall_radar_mae > 0:
+                print(
+                    f"  融合提升: {100 * (1 - overall_fused_mae / overall_radar_mae):.2f}% (相对于雷达)"
+                )
+            if overall_irst_mae > 0:
+                print(
+                    f"  融合提升: {100 * (1 - overall_fused_mae / overall_irst_mae):.2f}% (相对于红外)"
+                )
 
 
 # 主程序入口
 if __name__ == "__main__":
-    # 创建战场模拟器
-    simulator = BattlefieldSimulator(num_targets=1, num_nodes=1)
+
+    simulator = AgentSimulator()
 
     # 创建可视化器
     visualizer = BattlefieldVisualizer(simulator)
