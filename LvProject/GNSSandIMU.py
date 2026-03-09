@@ -8,9 +8,9 @@ from matplotlib import rcParams
 
 class AgentSimulator:
 
-    def __init__(self):
-        lat0 = 23.108
-        lon0 = 113.2647
+    def __init__(self, lat, lon):
+        lat0 = lat
+        lon0 = lon
         self.mycar = self.MyCar(lat0,lon0)
         self.mynw =  self.NetworkNode()
         self.mykalm = self.ExtendedKalmanFilter()
@@ -514,23 +514,6 @@ class BattlefieldVisualizer:
             [], [], "b.", markersize=4, alpha=0.3, label="卡尔曼融合"
         )
 
-
-
-        # 误差椭圆（协方差可视化）
-        # self.error_ellipses = []
-        # for target_id in range(self.sim.num_targets):
-        #     ellipse = Ellipse(
-        #         xy=(0, 0),
-        #         width=2,
-        #         height=2,
-        #         angle=0,
-        #         color="purple",
-        #         alpha=0.3,
-        #         label="融合误差椭圆" if target_id == 0 else "",
-        #     )
-        #     self.ax.add_patch(ellipse)
-        #     self.error_ellipses.append(ellipse)
-
         # 误差统计图表
         self.error_ax.set_title("误差")
         self.error_ax.set_xlabel("时间步")
@@ -557,17 +540,19 @@ class BattlefieldVisualizer:
         self.ax.legend(loc="upper right", fontsize=8)
         self.error_ax.legend(loc="upper right", fontsize=8)
 
-        #获取定位并存储  从日志中获取
-        self.pos = []
-
-
     def update(self, frame):
         """动画更新函数"""
+        self.poscont += 1
+        if self.poscont >= self.poslen:
+            return
         # 更新所有目标
         sim = self.sim
         #获取相对起始点的位移
-        haha = sim.mycar.carUpdate(self.pos[frame][0],self.pos[frame][1])
-        self.gps_pos.append(haha)
+        carpos = sim.mycar.carUpdate(pos[self.poscont][0],pos[self.poscont][1])
+        self.gps_pos.append(carpos)
+
+        #获取偏航角
+        carqua = sim.mynw.myQua.QuaternionCal()
 
 
 
@@ -770,8 +755,14 @@ class BattlefieldVisualizer:
 
 # 主程序入口
 if __name__ == "__main__":
+    # 获取定位并存储  从日志中获取
+    pos = []
+    #......
 
-    simulator = AgentSimulator()
+    poslen = len(pos)
+    poscont = 0
+
+    simulator = AgentSimulator(pos[0][0],pos[0][1])
 
     # 创建可视化器
     visualizer = BattlefieldVisualizer(simulator)
