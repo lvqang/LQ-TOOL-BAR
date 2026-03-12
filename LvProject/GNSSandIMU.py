@@ -66,10 +66,10 @@ class AgentSimulator:
 
             self.B = np.array(
                 [
-                    [0.5 * self.dt ** 2, 0, 0, 0, 0, 0],
-                    [0, 0.5 * self.dt ** 2, 0, 0, 0, 0],
-                    [0, 0, self.dt, 0, 0, 0],
-                    [0, 0, 0, self.dt, 0, 0],
+                    [0, 0, 0, 0, 0.5 * self.dt ** 2, 0],
+                    [0, 0, 0, 0, 0, 0.5 * self.dt ** 2],
+                    [0, 0, 0, 0, self.dt, 0],
+                    [0, 0, 0, 0, 0, self.dt],
                     [0, 0, 0, 0, 1, 0],
                     [0, 0, 0, 0, 0, 1],
                 ]
@@ -258,12 +258,12 @@ class AgentSimulator:
                 q1 = self.q1
                 q2 = self.q2
                 q3 = self.q3
-                self.G[3][3] ={ {q0**2+q1**2+q2**2+q3**2, 2*(q1*q2+q0*q3), 2*(q1*q3-q0*q2)}   #惯性系->机体系
+                self.G[3][3] ={ {q0**2+q1**2-q2**2-q3**2, 2*(q1*q2+q0*q3), 2*(q1*q3-q0*q2)}   #惯性系->机体系
                                 {2*(q1*q2-q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)}  # 惯性系->机体系
                                 {2*(q1*q3+q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2} }  # 惯性系->机体系
-                self.GT[3][3]={ {q0**2+q1**2+q2**2+q3**2, 2*(q1*q2-q0*q3), 2*(q1*q3+q0*q2)}   #惯性系->机体系
-                                {2*(q1*q2+q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)}  # 惯性系->机体系
-                                {2*(q1*q3-q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2} }  # 惯性系->机体系
+                self.GT[3][3]={ {q0**2+q1**2-q2**2-q3**2, 2*(q1*q2-q0*q3), 2*(q1*q3+q0*q2)}    #机体系->惯性系
+                                {2*(q1*q2+q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)}    # 机体系->惯性系
+                                {2*(q1*q3-q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2} }  # 机体系->惯性系
                 self.gravityX = 0
                 self.gravityY = 0
                 self.gravityZ = 0
@@ -285,12 +285,24 @@ class AgentSimulator:
                 self.Mag_lpX = 0
                 self.Mag_lpY = 0
                 self.Mag_lpZ = 0
+            def ENDtoBody(self, q,xyz):
+                q0,q1,q2,q3 = q
+                x,y,z=xyz
+                self.GT[3][3] = {{q0**2+q1**2-q2**2-q3**2, 2*(q1*q2-q0*q3), 2*(q1*q3+q0*q2)}   # 机体系->惯性系
+                                 {2*(q1*q2+q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)}   # 机体系->惯性系
+                                 {2*(q1*q3-q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2} }  # 机体系->惯性系
+                x1 = self.GT[0][0]*x+self.GT[0][1]*y+self.GT[0][2]*z
+                y1 = self.GT[1][0]*x+self.GT[1][1]*y+self.GT[1][2]*z
+                z1 = self.GT[2][0]*x+self.GT[2][1]*y+self.GT[2][2]*z
+                return np.array(x1,y1,z1)
+
 
             def QuaternionCal(self):
                 q0 = self.q0
                 q1 = self.q1
                 q2 = self.q2
                 q3 = self.q3
+                #重力加速度转为机体系
                 self.gravityX = 2*(q1*q3-q0*q2)
                 self.gravityY = 2*(q2*q3-q0*q1)
                 self.gravityZ = 2*(q1**2+q2**2)-1#应该是-1
@@ -299,7 +311,7 @@ class AgentSimulator:
                 self.AccX = Acc[0]
                 self.AccY = Acc[1]
                 self.AccZ = Acc[2]
-                Gyro = self.sensors["gyroscope"].measure()
+                Gyro = self.sensors["gyroscope"].measure()#获取的是角速度
                 self.GyroX = Gyro[0]
                 self.GyroY = Gyro[1]
                 self.GyroZ = Gyro[2]
@@ -314,17 +326,75 @@ class AgentSimulator:
                     self.AccY /= norqul
                     self.AccZ /= norqul
                 else:
+                    print("[G-sensor]:norqul = %f",norqul)
                     self.AccX = 0
                     self.AccY = 0
                     self.AccZ = 1
-                #叉积法获取角误差
+                #加速度计和重力分量四元数 叉积法获取角误差
                 errAccX = self.AccY*self.gravityZ-self.AccZ*self.gravityY#Acc.gravity.sinθ
                 errAccY = self.AccZ*self.gravityX-self.AccX*self.gravityZ#Acc.gravity都是模长为1
                 errAccZ = self.AccX*self.gravityY-self.AccY*self.gravityX#所以上述== sinθ≈θ
                 #低通滤波器
-                self.LpfX += 6.28*self.halftime*(errAccX-self.LpfX)
-                self.LpfY += 6.28*self.halftime*(errAccY-self.LpfY)
-                self.LpfZ += 6.28*self.halftime*(errAccZ-self.LpfZ)
+                f = 5#截止频率
+                alpha = 2*3.14*f*self.deltaT/(1 + 2 * 3.14 * f * self.deltaT)
+                self.LpfX =alpha*(errAccX) + (1-alpha)*self.LpfX
+                self.LpfY = alpha * (errAccY) + (1 - alpha) * self.LpfY
+                self.LpfZ =alpha*(errAccZ) + (1-alpha)*self.LpfZ
+
+                # 添加磁力计限航
+                # 磁力计转为机体系
+                mag = self.ENDtoBody([q0,q1,q2,q3],[self.MagX,self.MagY,self.MagZ])
+                magX,magY,magZ = mag
+                # 加速度计和重力分量四元数 叉积法获取角误差
+                errmagX = self.MagY * self.mag - self.MagZ * self.mag  #机体系下磁力计与惯性系叉乘获取偏转角度
+                errmagY = self.MagZ * self.mag - self.MagX * self.mag  #
+                errmagZ = self.MagX * self.mag - self.MagY * self.mag  #
+                self.MagX = self.MagX / norqul
+                self.MagY = self.MagY / norqul
+                self.MagZ = self.MagZ / norqul
+                self.Mag_lpX += 6.28 * 40 * self.halftime * (self.MagX - self.Mag_lpX)
+                self.Mag_lpY += 6.28 * 40 * self.halftime * (self.MagY - self.Mag_lpY)
+                self.Mag_lpZ += 6.28 * 40 * self.halftime * (self.MagZ - self.Mag_lpZ)
+                # 机体系转为惯性系
+                # norqul = np.sqrt(self.gravityX**2+self.gravityY**2+self.gravityZ**2)
+                # graX = self.gravityX / norqul
+                # graY = self.gravityY / norqul
+                # graZ = self.gravityZ / norqul
+                # norqul = np.sqrt(self.Mag_lpX ** 2 + self.Mag_lpY ** 2 + self.Mag_lpZ ** 2)
+                # MagX = self.Mag_lpX / norqul
+                # MagY = self.Mag_lpY / norqul
+                # MagZ = self.Mag_lpZ / norqul
+                # gx=0
+                # gy=0
+                # gz=-1
+                q0 = self.q0
+                q1 = self.q1
+                q2 = self.q2
+                q3 = self.q3
+                self.G[3][3] = {{q0 ** 2 + q1 ** 2 + q2 ** 2 + q3 ** 2, 2 * (q1 * q2 + q0 * q3),
+                                 2 * (q1 * q3 - q0 * q2)}  # 惯性系->机体系
+                {2 * (q1 * q2 - q0 * q3), q0 ** 2 - q1 ** 2 + q2 ** 2 - q3 ** 2, 2 * (q2 * q3 - q0 * q1)}  # 惯性系->机体系
+                {2 * (q1 * q3 + q0 * q2), 2 * (q2 * q3 - q0 * q1), q0 ** 2 - q1 ** 2 - q2 ** 2 + q3 ** 2}}  # 惯性系->机体系
+                self.GT[3][3] = {{q0 ** 2 + q1 ** 2 + q2 ** 2 + q3 ** 2, 2 * (q1 * q2 - q0 * q3),
+                                  2 * (q1 * q3 + q0 * q2)}  # 惯性系->机体系
+                {2 * (q1 * q2 + q0 * q3), q0 ** 2 - q1 ** 2 + q2 ** 2 - q3 ** 2, 2 * (q2 * q3 - q0 * q1)}  # 惯性系->机体系
+                {2 * (q1 * q3 - q0 * q2), 2 * (q2 * q3 - q0 * q1), q0 ** 2 - q1 ** 2 - q2 ** 2 + q3 ** 2}}  # 惯性系->机体系
+
+                MagX = self.Mag_lpX
+                MagY = self.Mag_lpY
+                MagZ = self.Mag_lpZ
+                MagProX = self.GT[0][0] * MagX + self.GT[0][1] * MagY + self.GT[0][2] * MagZ
+                MagProY = self.GT[1][0] * MagX + self.GT[1][1] * MagY + self.GT[1][2] * MagZ
+                MagProZ = self.GT[2][0] * MagX + self.GT[2][1] * MagY + self.GT[2][2] * MagZ
+                norqul = np.sqrt(MagProX ** 2 + MagProY ** 2 + MagProZ ** 2)
+
+                yaw_correct = IMU_YAW
+                if MagProX != 0 and MagProY != 0 and MagProZ != 0:
+                    yaw_mag = np.atan2(MagProY / norqul, MagProX / norqul) * DEG_ANG
+                    yaw_correct = Kp * 0.8 * self.To_180_degrees(yaw_mag - IMU_YAW)
+
+
+
 
                 IMU_LIM = 0.034906  #积分限幅  2°
                 ANGLE   = 0.017453  #°转为弧度
@@ -333,17 +403,17 @@ class AgentSimulator:
                 Ki = 1
                 Kp = 1
                 yawcorrect = 1
-                self.InteX += self.LpfX * Ki * 2 * self.halftime
-                self.InteY += self.LpfY * Ki * 2 * self.halftime
-                self.InteZ += self.LpfZ * Ki * 2 * self.halftime
+                self.InteX += self.LpfX * Ki * self.deltaT
+                self.InteY += self.LpfY * Ki * self.deltaT
+                self.InteZ += self.LpfZ * Ki * self.deltaT
                 #积分限幅
                 self.InteX = max(-IMU_LIM, min(IMU_LIM, self.InteX))
                 self.InteY = max(-IMU_LIM, min(IMU_LIM, self.InteY))
                 self.InteZ = max(-IMU_LIM, min(IMU_LIM, self.InteZ))
                 #PID  通过加速度计在x轴 y轴的分量 校正陀螺仪的数据  同时还需先抵消陀螺仪偏航带来的干扰
-                GloX = (self.GyroX - self.gravityX * yawcorrect) * ANGLE + (Kp * (self.LpfX + self.InteX))
-                GloY = (self.GyroY - self.gravityY * yawcorrect) * ANGLE + (Kp * (self.LpfY + self.InteY))
-                GloZ = (self.GyroZ - self.gravityZ * yawcorrect) * ANGLE
+                GloX = (self.GyroX - self.gravityX * yawcorrect) + (Kp * (self.LpfX + self.InteX))#rad/s
+                GloY = (self.GyroY - self.gravityY * yawcorrect) + (Kp * (self.LpfY + self.InteY))
+                GloZ = (self.GyroZ - self.gravityZ * yawcorrect)
 
                 #迭代四元数
                 self.q0 = q0+(-q1*GloX - q2*GloY - q3*GloZ)*self.halftime
@@ -367,51 +437,6 @@ class AgentSimulator:
                 IMU_PITCH=np.asin(EndAngle2)*DEG_ANG
                 IMU_ROLL= np.atan2(EndAngle0, EndAngle1) * DEG_ANG
 
-                #添加磁力计限航
-                norqul = np.sqrt(self.MagX**2+self.MagY**2+self.MagZ**2)
-                self.MagX = self.MagX / norqul
-                self.MagY = self.MagY / norqul
-                self.MagZ = self.MagZ / norqul
-                self.Mag_lpX += 6.28 * 40 * self.halftime * (self.MagX - self.Mag_lpX)
-                self.Mag_lpY += 6.28 * 40 * self.halftime * (self.MagY - self.Mag_lpY)
-                self.Mag_lpZ += 6.28 * 40 * self.halftime * (self.MagZ - self.Mag_lpZ)
-                #机体系转为惯性系
-                # norqul = np.sqrt(self.gravityX**2+self.gravityY**2+self.gravityZ**2)
-                # graX = self.gravityX / norqul
-                # graY = self.gravityY / norqul
-                # graZ = self.gravityZ / norqul
-                # norqul = np.sqrt(self.Mag_lpX ** 2 + self.Mag_lpY ** 2 + self.Mag_lpZ ** 2)
-                # MagX = self.Mag_lpX / norqul
-                # MagY = self.Mag_lpY / norqul
-                # MagZ = self.Mag_lpZ / norqul
-                # gx=0
-                # gy=0
-                # gz=-1
-                q0 = self.q0
-                q1 = self.q1
-                q2 = self.q2
-                q3 = self.q3
-                self.G[3][3] ={ {q0**2+q1**2+q2**2+q3**2, 2*(q1*q2+q0*q3), 2*(q1*q3-q0*q2)}   #惯性系->机体系
-                                {2*(q1*q2-q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)}  # 惯性系->机体系
-                                {2*(q1*q3+q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2} }  # 惯性系->机体系
-                self.GT[3][3]={ {q0**2+q1**2+q2**2+q3**2, 2*(q1*q2-q0*q3), 2*(q1*q3+q0*q2)}   #惯性系->机体系
-                                {2*(q1*q2+q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)}  # 惯性系->机体系
-                                {2*(q1*q3-q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2} }  # 惯性系->机体系
-
-                MagX = self.Mag_lpX
-                MagY = self.Mag_lpY
-                MagZ = self.Mag_lpZ
-                MagProX = self.GT[0][0]*MagX+self.GT[0][1]*MagY+self.GT[0][2]*MagZ
-                MagProY = self.GT[1][0]*MagX+self.GT[1][1]*MagY+self.GT[1][2]*MagZ
-                MagProZ = self.GT[2][0]*MagX+self.GT[2][1]*MagY+self.GT[2][2]*MagZ
-                norqul = np.sqrt(MagProX ** 2 + MagProY ** 2 + MagProZ ** 2)
-
-                yaw_correct = IMU_YAW
-                if MagProX!=0 and MagProY!=0 and MagProZ!=0:
-                    yaw_mag = np.atan2(MagProY/norqul,MagProX/norqul)*DEG_ANG
-                    yaw_correct = Kp*0.8* self.To_180_degrees(yaw_mag - IMU_YAW)
-
-                return np.array([yaw_correct, IMU_PITCH, IMU_ROLL])
 
             def To_180_degrees(self, x):
                 k=0
