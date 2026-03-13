@@ -41,14 +41,14 @@ class AgentSimulator:
             return [self.pos_N,self.pos_E]
 
     class ExtendedKalmanFilter:
-        def __init__(self, sta, x, y):
+        def __init__(self, sta=1):
             self.dt = 0.1  # 时间步长
 
             # 状态向量: [x, y, vx, vy, ax, ay]
             self.x = np.zeros(6)  # 初始状态  一维数组全0
             if(sta==1):#定位有效
-                self.x[0]=x
-                self.x[1] = y
+                self.x[0]=0#初始位置就是0  
+                self.x[1] = 0
 
             self.P = np.eye(6) * 1000  # 初始协方差矩阵  生成单位矩阵
 
@@ -258,11 +258,11 @@ class AgentSimulator:
                 q1 = self.q1
                 q2 = self.q2
                 q3 = self.q3
-                self.G[3][3] ={ {q0**2+q1**2-q2**2-q3**2, 2*(q1*q2+q0*q3), 2*(q1*q3-q0*q2)}   #惯性系->机体系
-                                {2*(q1*q2-q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)}  # 惯性系->机体系
+                self.G[3][3] ={ {q0**2+q1**2-q2**2-q3**2, 2*(q1*q2+q0*q3), 2*(q1*q3-q0*q2)},   #惯性系->机体系
+                                {2*(q1*q2-q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)},  # 惯性系->机体系
                                 {2*(q1*q3+q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2} }  # 惯性系->机体系
-                self.GT[3][3]={ {q0**2+q1**2-q2**2-q3**2, 2*(q1*q2-q0*q3), 2*(q1*q3+q0*q2)}    #机体系->惯性系
-                                {2*(q1*q2+q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)}    # 机体系->惯性系
+                self.GT[3][3]={ {q0**2+q1**2-q2**2-q3**2, 2*(q1*q2-q0*q3), 2*(q1*q3+q0*q2)},    #机体系->惯性系
+                                {2*(q1*q2+q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)},    # 机体系->惯性系
                                 {2*(q1*q3-q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2} }  # 机体系->惯性系
                 self.gravityX = 0
                 self.gravityY = 0
@@ -288,13 +288,23 @@ class AgentSimulator:
             def ENDtoBody(self, q,xyz):
                 q0,q1,q2,q3 = q
                 x,y,z=xyz
-                self.GT[3][3] = {{q0**2+q1**2-q2**2-q3**2, 2*(q1*q2-q0*q3), 2*(q1*q3+q0*q2)}   # 机体系->惯性系
-                                 {2*(q1*q2+q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)}   # 机体系->惯性系
-                                 {2*(q1*q3-q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2} }  # 机体系->惯性系
+                self.G[3][3] =  {{q0**2+q1**2-q2**2-q3**2, 2*(q1*q2+q0*q3), 2*(q1*q3-q0*q2)},   # 惯性系->机体系
+                                 {2*(q1*q2-q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)},   # 惯性系->机体系
+                                 {2*(q1*q3+q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2} }  # 惯性系->机体系
+                x1 = self.G[0][0]*x+self.G[0][1]*y+self.G[0][2]*z
+                y1 = self.G[1][0]*x+self.G[1][1]*y+self.G[1][2]*z
+                z1 = self.G[2][0]*x+self.G[2][1]*y+self.G[2][2]*z
+                return [x1,y1,z1]
+            def BodytoEND(self, q,xyz):
+                q0,q1,q2,q3 = q
+                x,y,z=xyz
+                self.GT[3][3] = {{q0**2+q1**2-q2**2-q3**2, 2*(q1*q2-q0*q3), 2*(q1*q3+q0*q2)},   # 惯性系->机体系
+                                 {2*(q1*q2+q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)},   # 惯性系->机体系
+                                 {2*(q1*q3-q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2} }  # 惯性系->机体系
                 x1 = self.GT[0][0]*x+self.GT[0][1]*y+self.GT[0][2]*z
                 y1 = self.GT[1][0]*x+self.GT[1][1]*y+self.GT[1][2]*z
                 z1 = self.GT[2][0]*x+self.GT[2][1]*y+self.GT[2][2]*z
-                return np.array(x1,y1,z1)
+                return [x1,y1,z1]
 
 
             def QuaternionCal(self):
@@ -335,7 +345,7 @@ class AgentSimulator:
                 errAccY = self.AccZ*self.gravityX-self.AccX*self.gravityZ#Acc.gravity都是模长为1
                 errAccZ = self.AccX*self.gravityY-self.AccY*self.gravityX#所以上述== sinθ≈θ
                 #低通滤波器
-                f = 5#截止频率
+                f = 20#截止频率
                 alpha = 2*3.14*f*self.deltaT/(1 + 2 * 3.14 * f * self.deltaT)
                 self.LpfX =alpha*(errAccX) + (1-alpha)*self.LpfX
                 self.LpfY = alpha * (errAccY) + (1 - alpha) * self.LpfY
@@ -345,55 +355,16 @@ class AgentSimulator:
                 # 磁力计转为机体系
                 mag = self.ENDtoBody([q0,q1,q2,q3],[self.MagX,self.MagY,self.MagZ])
                 magX,magY,magZ = mag
-                # 加速度计和重力分量四元数 叉积法获取角误差
-                errmagX = self.MagY * self.mag - self.MagZ * self.mag  #机体系下磁力计与惯性系叉乘获取偏转角度
-                errmagY = self.MagZ * self.mag - self.MagX * self.mag  #
-                errmagZ = self.MagX * self.mag - self.MagY * self.mag  #
-                self.MagX = self.MagX / norqul
-                self.MagY = self.MagY / norqul
-                self.MagZ = self.MagZ / norqul
-                self.Mag_lpX += 6.28 * 40 * self.halftime * (self.MagX - self.Mag_lpX)
-                self.Mag_lpY += 6.28 * 40 * self.halftime * (self.MagY - self.Mag_lpY)
-                self.Mag_lpZ += 6.28 * 40 * self.halftime * (self.MagZ - self.Mag_lpZ)
-                # 机体系转为惯性系
-                # norqul = np.sqrt(self.gravityX**2+self.gravityY**2+self.gravityZ**2)
-                # graX = self.gravityX / norqul
-                # graY = self.gravityY / norqul
-                # graZ = self.gravityZ / norqul
-                # norqul = np.sqrt(self.Mag_lpX ** 2 + self.Mag_lpY ** 2 + self.Mag_lpZ ** 2)
-                # MagX = self.Mag_lpX / norqul
-                # MagY = self.Mag_lpY / norqul
-                # MagZ = self.Mag_lpZ / norqul
-                # gx=0
-                # gy=0
-                # gz=-1
-                q0 = self.q0
-                q1 = self.q1
-                q2 = self.q2
-                q3 = self.q3
-                self.G[3][3] = {{q0 ** 2 + q1 ** 2 + q2 ** 2 + q3 ** 2, 2 * (q1 * q2 + q0 * q3),
-                                 2 * (q1 * q3 - q0 * q2)}  # 惯性系->机体系
-                {2 * (q1 * q2 - q0 * q3), q0 ** 2 - q1 ** 2 + q2 ** 2 - q3 ** 2, 2 * (q2 * q3 - q0 * q1)}  # 惯性系->机体系
-                {2 * (q1 * q3 + q0 * q2), 2 * (q2 * q3 - q0 * q1), q0 ** 2 - q1 ** 2 - q2 ** 2 + q3 ** 2}}  # 惯性系->机体系
-                self.GT[3][3] = {{q0 ** 2 + q1 ** 2 + q2 ** 2 + q3 ** 2, 2 * (q1 * q2 - q0 * q3),
-                                  2 * (q1 * q3 + q0 * q2)}  # 惯性系->机体系
-                {2 * (q1 * q2 + q0 * q3), q0 ** 2 - q1 ** 2 + q2 ** 2 - q3 ** 2, 2 * (q2 * q3 - q0 * q1)}  # 惯性系->机体系
-                {2 * (q1 * q3 - q0 * q2), 2 * (q2 * q3 - q0 * q1), q0 ** 2 - q1 ** 2 - q2 ** 2 + q3 ** 2}}  # 惯性系->机体系
-
-                MagX = self.Mag_lpX
-                MagY = self.Mag_lpY
-                MagZ = self.Mag_lpZ
-                MagProX = self.GT[0][0] * MagX + self.GT[0][1] * MagY + self.GT[0][2] * MagZ
-                MagProY = self.GT[1][0] * MagX + self.GT[1][1] * MagY + self.GT[1][2] * MagZ
-                MagProZ = self.GT[2][0] * MagX + self.GT[2][1] * MagY + self.GT[2][2] * MagZ
-                norqul = np.sqrt(MagProX ** 2 + MagProY ** 2 + MagProZ ** 2)
-
-                yaw_correct = IMU_YAW
-                if MagProX != 0 and MagProY != 0 and MagProZ != 0:
-                    yaw_mag = np.atan2(MagProY / norqul, MagProX / norqul) * DEG_ANG
-                    yaw_correct = Kp * 0.8 * self.To_180_degrees(yaw_mag - IMU_YAW)
-
-
+                # 惯性系和机体系下的叉积法获取角误差
+                errmagX = self.MagY * magZ - self.MagZ * magY  #
+                errmagY = self.MagZ * magX - self.MagX * magZ  #
+                errmagZ = self.MagX * magY - self.MagY * magX  #
+                # 低通滤波器
+                f = 20  # 截止频率
+                alpha = 2 * 3.14 * f * self.deltaT / (1 + 2 * 3.14 * f * self.deltaT)
+                self.Mag_lpX = alpha * (errmagX) + (1 - alpha) * self.Mag_lpX
+                self.Mag_lpY = alpha * (errmagY) + (1 - alpha) * self.Mag_lpY
+                self.Mag_lpZ = alpha * (errmagZ) + (1 - alpha) * self.Mag_lpZ
 
 
                 IMU_LIM = 0.034906  #积分限幅  2°
@@ -402,24 +373,26 @@ class AgentSimulator:
                 #计算积分环节
                 Ki = 1
                 Kp = 1
-                yawcorrect = 1
+                Ki_z = 1
+                Kp_z = 1
+                yawcorrect = 0
                 self.InteX += self.LpfX * Ki * self.deltaT
                 self.InteY += self.LpfY * Ki * self.deltaT
-                self.InteZ += self.LpfZ * Ki * self.deltaT
+                self.InteZ += self.Mag_lpZ * Ki * self.deltaT#偏航角用磁力计
                 #积分限幅
                 self.InteX = max(-IMU_LIM, min(IMU_LIM, self.InteX))
                 self.InteY = max(-IMU_LIM, min(IMU_LIM, self.InteY))
                 self.InteZ = max(-IMU_LIM, min(IMU_LIM, self.InteZ))
-                #PID  通过加速度计在x轴 y轴的分量 校正陀螺仪的数据  同时还需先抵消陀螺仪偏航带来的干扰
-                GloX = (self.GyroX - self.gravityX * yawcorrect) + (Kp * (self.LpfX + self.InteX))#rad/s
-                GloY = (self.GyroY - self.gravityY * yawcorrect) + (Kp * (self.LpfY + self.InteY))
-                GloZ = (self.GyroZ - self.gravityZ * yawcorrect)
+                #PID  通过加速度计在x轴 y轴的分量 校正陀螺仪的数据
+                GloX = (self.GyroX - self.gravityX * yawcorrect) + (Kp  * (self.LpfX    + self.InteX))#rad/s
+                GloY = (self.GyroY - self.gravityY * yawcorrect) + (Kp  * (self.LpfY    + self.InteY))
+                GloZ = (self.GyroZ - self.gravityZ * yawcorrect) + (Kp_z* (self.Mag_lpZ + self.InteX))##偏航角用磁力计
 
-                #迭代四元数
+                #迭代四元数dq=0.5* q * w  其中w是角速度  q(t+1)=q(t+1)+dq*dt
                 self.q0 = q0+(-q1*GloX - q2*GloY - q3*GloZ)*self.halftime
                 self.q1 = q1+( q0*GloX + q2*GloZ - q3*GloY)*self.halftime
-                self.q2 = q2+( q0*GloY - q1*GloZ + q3*GloX)*self.halftime
-                self.q3 = q3+( q0*GloZ + q1*GloY - q3*GloX)*self.halftime
+                self.q2 = q2+( q0*GloY + q3*GloX - q1*GloZ)*self.halftime
+                self.q3 = q3+( q0*GloZ + q1*GloY - q2*GloX)*self.halftime
                 #归一化
                 norqul = np.sqrt(self.q0**2+self.q1**2+self.q2**2+self.q3**2)
                 self.q0=self.q0/norqul
@@ -433,10 +406,14 @@ class AgentSimulator:
                 EndAngle2 = 2 * (self.q1 * self.q3 - self.q0 * self.q2)
                 EndAngle3 = 2 * (-self.q1 * self.q2 - self.q0 * self.q3)
                 EndAngle4 = 2 * (self.q0**2 + self.q1**2)-1
-                IMU_YAW = np.atan2(EndAngle3,EndAngle4)*DEG_ANG
+                IMU_YAW = np.atan2(EndAngle3,EndAngle4)*DEG_ANG#第一个数分子  第二个是分母
                 IMU_PITCH=np.asin(EndAngle2)*DEG_ANG
                 IMU_ROLL= np.atan2(EndAngle0, EndAngle1) * DEG_ANG
 
+                #计算加速度计在惯性系的数据
+                Acc = self.BodytoEND(self, [self.q0,self.q1,self.q2,self.q3],[self.AccX,self.AccY,self.AccZ])
+                AX,AY,AZ = Acc
+                return [AX,AY,AZ]
 
             def To_180_degrees(self, x):
                 k=0
@@ -576,120 +553,31 @@ class BattlefieldVisualizer:
         carpos = sim.mycar.carUpdate(pos[self.poscont][0],pos[self.poscont][1])
         self.gps_pos.append(carpos)
 
-        #获取偏航角
-        carqua = sim.mynw.myQua.QuaternionCal()
+        #获取加速度
+        acc = sim.mynw.myQua.QuaternionCal()
 
+        #计算卡尔曼
+        pre = sim.mykalm.predict(0.1, acc[0],acc[1])
+        self.math_pos.append(pre)
 
+        updata = sim.mykalm.update(carpos[0],carpos[1])
+        self.kalm_pos.append(updata)
 
+        #计算误差
+        self.math_gps_pos.append(pre-carpos)
+        self.kalm_gps_pos.append(updata-carpos)
 
         # 更新绘图数据
-        true_positions = np.array([t.pos for t in self.sim.targets])
-        node_positions = np.array([n.pos for n in self.sim.nodes])
+        self.gps_pos.set_data(carpos[0], carpos[1])
+        self.math_pos.set_data(pre[0], pre[1])
+        self.kalm_pos.set_data(updata[0], updata[1])
 
-        # 更新散点图
-        self.targets_scat.set_offsets(true_positions)
-        self.nodes_scat.set_offsets(node_positions)
-
-        # 更新测量点
-        if radar_measurements:
-            radar_pts = np.array(radar_measurements)
-            self.radar_meas.set_data(radar_pts[:, 0], radar_pts[:, 1])
-
-        if irst_measurements:
-            irst_pts = np.array(irst_measurements)
-            self.irst_meas.set_data(irst_pts[:, 0], irst_pts[:, 1])
-
-        # 更新轨迹
-        for target_id, target in enumerate(self.sim.targets):
-            self.true_pos_history[target_id].append(target.pos)
-
-            # 从第一个节点获取滤波结果
-            node = self.sim.nodes[0]
-            radar_filter = node.filters[target_id]["radar"]
-            irst_filter = node.filters[target_id]["irst"]
-            fused_filter = node.filters[target_id]["fused"]
-
-            # 预测所有滤波器状态（即使没有新测量）
-            # radar_filter.predict(0.1)
-            # irst_filter.predict(0.1)
-            # fused_filter.predict(0.1)
-
-            # 存储估计位置
-            radar_pos = radar_filter.x[:2]
-            irst_pos = irst_filter.x[:2]
-            fused_pos = fused_filter.x[:2]
-
-            self.radar_pos_history[target_id].append(radar_pos)
-            self.irst_pos_history[target_id].append(irst_pos)
-            self.fused_pos_history[target_id].append(fused_pos)
-
-            # 计算误差
-            radar_error = np.linalg.norm(target.pos - radar_pos)
-            irst_error = np.linalg.norm(target.pos - irst_pos)
-            fused_error = np.linalg.norm(target.pos - fused_pos)
-
-            self.radar_error_history[target_id].append(radar_error)
-            self.irst_error_history[target_id].append(irst_error)
-            self.fused_error_history[target_id].append(fused_error)
-
-            # 更新轨迹线
-            self.true_trajs[target_id].set_data(
-                [pos[0] for pos in self.true_pos_history[target_id]],
-                [pos[1] for pos in self.true_pos_history[target_id]],
-            )
-
-            self.radar_trajs[target_id].set_data(
-                [pos[0] for pos in self.radar_pos_history[target_id]],
-                [pos[1] for pos in self.radar_pos_history[target_id]],
-            )
-
-            self.irst_trajs[target_id].set_data(
-                [pos[0] for pos in self.irst_pos_history[target_id]],
-                [pos[1] for pos in self.irst_pos_history[target_id]],
-            )
-
-            self.fused_trajs[target_id].set_data(
-                [pos[0] for pos in self.fused_pos_history[target_id]],
-                [pos[1] for pos in self.fused_pos_history[target_id]],
-            )
-
-            # 更新误差椭圆
-            P = fused_filter.P
-            eigenvalues, eigenvectors = np.linalg.eig(P[:2, :2])
-            angle = np.degrees(np.arctan2(eigenvectors[1, 0], eigenvectors[0, 0]))
-            width, height = 2 * np.sqrt(eigenvalues)
-
-            self.error_ellipses[target_id].center = fused_filter.x[0], fused_filter.x[1]
-            self.error_ellipses[target_id].width = width
-            self.error_ellipses[target_id].height = height
-            self.error_ellipses[target_id].angle = angle
-
-            # 更新误差图
-            self.radar_error_lines[target_id].set_data(
-                range(len(self.radar_error_history[target_id])),
-                self.radar_error_history[target_id],
-            )
-
-            self.irst_error_lines[target_id].set_data(
-                range(len(self.irst_error_history[target_id])),
-                self.irst_error_history[target_id],
-            )
-
-            self.fused_error_lines[target_id].set_data(
-                range(len(self.fused_error_history[target_id])),
-                self.fused_error_history[target_id],
-            )
-
-        # 调整误差图坐标轴
-        self.error_ax.relim()
-        self.error_ax.autoscale_view()
-
-        # 更新时间
-        self.sim.time += 0.1
+        self.math_gps_pos.set_data(pre[0]-carpos[0], pre[1]-carpos[1])
+        self.kalm_gps_pos.set_data(updata[0]-carpos[0], updata[1]-carpos[1])
 
         # 返回所有需要重绘的对象
         return (
-            (self.targets_scat, self.nodes_scat, self.radar_meas, self.irst_meas)
+            (self.gps_pos, self.math_pos, self.kalm_pos, self.math_gps_pos, self.kalm_gps_pos)
             + tuple(self.true_trajs)
             + tuple(self.radar_trajs)
             + tuple(self.irst_trajs)
@@ -699,83 +587,6 @@ class BattlefieldVisualizer:
             + tuple(self.irst_error_lines)
             + tuple(self.fused_error_lines)
         )
-
-    def calculate_accuracy_metrics(self):
-        """计算并返回精度指标"""
-        metrics = {}
-        for target_id in range(self.sim.num_targets):
-            radar_errors = self.radar_error_history[target_id]
-            irst_errors = self.irst_error_history[target_id]
-            fused_errors = self.fused_error_history[target_id]
-
-            if not fused_errors:
-                continue
-
-            metrics[target_id] = {
-                "radar": {
-                    "rmse": np.sqrt(np.mean(np.square(radar_errors))),
-                    "mae": np.mean(radar_errors),
-                    "max": np.max(radar_errors),
-                    "min": np.min(radar_errors),
-                },
-                "irst": {
-                    "rmse": np.sqrt(np.mean(np.square(irst_errors))),
-                    "mae": np.mean(irst_errors),
-                    "max": np.max(irst_errors),
-                    "min": np.min(irst_errors),
-                },
-                "fused": {
-                    "rmse": np.sqrt(np.mean(np.square(fused_errors))),
-                    "mae": np.mean(fused_errors),
-                    "max": np.max(fused_errors),
-                    "min": np.min(fused_errors),
-                },
-            }
-
-        return metrics
-
-    def print_accuracy_report(self):
-        """打印精度报告"""
-        metrics = self.calculate_accuracy_metrics()
-
-        if not metrics:
-            print("无有效误差数据")
-            return
-
-        print("\n===== 目标跟踪精度报告 =====")
-
-        for target_id, target_metrics in metrics.items():
-            print(f"\n目标 {target_id+1}:")
-
-            for sensor_type, stats in target_metrics.items():
-                sensor_name = {"radar": "雷达", "irst": "红外", "fused": "融合"}.get(
-                    sensor_type, sensor_type
-                )
-
-                print(f"\n  {sensor_name} 传感器:")
-                print(f"    RMSE: {stats['rmse']:.2f} m")
-                print(f"    MAE:  {stats['mae']:.2f} m")
-                print(f"    最大误差: {stats['max']:.2f} m")
-                print(f"    最小误差: {stats['min']:.2f} m")
-
-        # 计算总体平均误差
-        if metrics:
-            overall_radar_mae = np.mean([m["radar"]["mae"] for m in metrics.values()])
-            overall_irst_mae = np.mean([m["irst"]["mae"] for m in metrics.values()])
-            overall_fused_mae = np.mean([m["fused"]["mae"] for m in metrics.values()])
-
-            print(f"\n===== 总体性能对比 =====")
-            print(f"  雷达平均误差: {overall_radar_mae:.2f} m")
-            print(f"  红外平均误差: {overall_irst_mae:.2f} m")
-            print(f"  融合平均误差: {overall_fused_mae:.2f} m")
-            if overall_radar_mae > 0:
-                print(
-                    f"  融合提升: {100 * (1 - overall_fused_mae / overall_radar_mae):.2f}% (相对于雷达)"
-                )
-            if overall_irst_mae > 0:
-                print(
-                    f"  融合提升: {100 * (1 - overall_fused_mae / overall_irst_mae):.2f}% (相对于红外)"
-                )
 
 
 # 主程序入口
