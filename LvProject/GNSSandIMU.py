@@ -521,10 +521,10 @@ class BattlefieldVisualizer:
         self.error_ax.set_xlabel("时间步")
         self.error_ax.set_ylabel("误差 (m)")
 
-        (self.math_gps,) = self.ax.plot(
+        (self.math_gps,) = self.error_ax.plot(
             [], [], "k.", markersize=4, alpha=0.3, label="MATH-GPS"
         )
-        (self.kalm_gps,) = self.ax.plot(
+        (self.kalm_gps,) = self.error_ax.plot(
             [], [], "r.", markersize=4, alpha=0.3, label="KALM-GPS"
         )
 
@@ -568,25 +568,19 @@ class BattlefieldVisualizer:
         self.kalm_gps_pos.append(updata-carpos)
 
         # 更新绘图数据
-        self.gps_pos.set_data(carpos[0], carpos[1])
-        self.math_pos.set_data(pre[0], pre[1])
-        self.kalm_pos.set_data(updata[0], updata[1])
+        self.gps_pos.set_data(carpos[:,0], carpos[:,1])
+        self.math_pos.set_data(pre[:,0], pre[:,1])
+        self.kalm_pos.set_data(updata[:,0], updata[:,1])
 
-        self.math_gps_pos.set_data(pre[0]-carpos[0], pre[1]-carpos[1])
-        self.kalm_gps_pos.set_data(updata[0]-carpos[0], updata[1]-carpos[1])
+        self.math_gps_pos.set_data(pre[:,0]-carpos[:,0], pre[:,1]-carpos[:,1])
+        self.kalm_gps_pos.set_data(updata[:,0]-carpos[:,0], updata[:,1]-carpos[:,1])
 
         # 返回所有需要重绘的对象
-        return (
-            (self.gps_pos, self.math_pos, self.kalm_pos, self.math_gps_pos, self.kalm_gps_pos)
-            + tuple(self.true_trajs)
-            + tuple(self.radar_trajs)
-            + tuple(self.irst_trajs)
-            + tuple(self.fused_trajs)
-            + tuple(self.error_ellipses)
-            + tuple(self.radar_error_lines)
-            + tuple(self.irst_error_lines)
-            + tuple(self.fused_error_lines)
-        )
+        return (tuple(self.gps_pos)
+            + tuple(self.math_pos)
+            + tuple(self.kalm_pos)
+            + tuple(self.math_gps_pos)
+            + tuple(self.kalm_gps_pos))
 
 
 # 主程序入口
@@ -594,6 +588,7 @@ if __name__ == "__main__":
     # 获取定位并存储  从日志中获取
     pos = []
     #......
+    pos.append([1,2])
 
     poslen = len(pos)
     poscont = 0
@@ -612,7 +607,7 @@ if __name__ == "__main__":
         visualizer.fig,
         animate,#更新函数
         frames=np.arange(0, 200),#帧数
-        interval=50,#dt=50ms
+        interval=100,#dt=50ms
         blit=True,#只更新变化区域
         repeat=False,#是否重复
     )
