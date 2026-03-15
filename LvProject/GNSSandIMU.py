@@ -3,14 +3,17 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.patches import Ellipse
 from matplotlib import rcParams
-
-
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+from matplotlib.patches import Ellipse
+from matplotlib import rcParams
 
 class AgentSimulator:
 
-    def __init__(self, lat, lon):
-        lat0 = lat
-        lon0 = lon
+    def __init__(self, pos):
+        lat0 = pos[0][1]
+        lon0 = pos[0][0]
         self.mycar = self.MyCar(lat0,lon0)
         self.mynw =  self.NetworkNode()
         self.mykalm = self.ExtendedKalmanFilter()
@@ -24,7 +27,7 @@ class AgentSimulator:
             self.h0   = h0
             a = 6378137.0  # WGS84地球长半轴（米）
             e2 = 0.00669437999014  # WGS84第一偏心率平方
-            self.N = a / np.sqrt(1 - e2 * np.sin(lat0) ^ 2)  # 卯酉圈曲率半径
+            self.N = a / np.sqrt(1 - e2 * np.sin(lat0)**2)  # 卯酉圈曲率半径
 
         def carUpdate(self, next_lat, next_lon, next_h=10, higt_fixed=1, dt=0.1):
 
@@ -35,7 +38,7 @@ class AgentSimulator:
             # 北方向（N）
             self.pos_N = (next_lat - self.lat0) * (self.N + self.h0)
             # 东方向（E）
-            self.pos_E = (next_lon - self.lon0) * (self.N + self.h0) * cos(self.lat0)
+            self.pos_E = (next_lon - self.lon0) * (self.N + self.h0) * np.cos(self.lat0)
             # 天方向（U）
             self.pos_U = h - self.h0
             return [self.pos_N,self.pos_E]
@@ -221,7 +224,7 @@ class AgentSimulator:
 
     class NetworkNode:
         def __init__(self):
-            myQua = IMUQuaternion()
+            self.myQua = self.IMUQuaternion()
 
         class IMUQuaternion:
             def __init__(self, inist = 0):
@@ -231,9 +234,9 @@ class AgentSimulator:
                     "gyroscope":    self.Gyro(),
                     "magnetometer": self.Magne(),
                 }
-                ax = self.sensors["gyroscope"].mea_x#必须是机体系下的数据
-                ay = self.sensors["gyroscope"].mea_y
-                az = self.sensors["gyroscope"].mea_z
+                ax = self.sensors["gyroscope"].miu_psi #必须是机体系下的数据
+                ay = self.sensors["gyroscope"].miu_sita
+                az = self.sensors["gyroscope"].miu_phy
                 yaw = np.degrees( np.arctan2(ay,ax))
                 pitch=np.degrees( np.arctan2(-ax, np.sqrt(ay**2 + az**2)))
                 roll = np.degrees( np.arctan2(ay,az))
@@ -258,12 +261,12 @@ class AgentSimulator:
                 q1 = self.q1
                 q2 = self.q2
                 q3 = self.q3
-                self.G[3][3] ={ {q0**2+q1**2-q2**2-q3**2, 2*(q1*q2+q0*q3), 2*(q1*q3-q0*q2)},   #惯性系->机体系
-                                {2*(q1*q2-q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)},  # 惯性系->机体系
-                                {2*(q1*q3+q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2} }  # 惯性系->机体系
-                self.GT[3][3]={ {q0**2+q1**2-q2**2-q3**2, 2*(q1*q2-q0*q3), 2*(q1*q3+q0*q2)},    #机体系->惯性系
-                                {2*(q1*q2+q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)},    # 机体系->惯性系
-                                {2*(q1*q3-q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2} }  # 机体系->惯性系
+                self.G =[ [q0**2+q1**2-q2**2-q3**2, 2*(q1*q2+q0*q3), 2*(q1*q3-q0*q2)],   #惯性系->机体系
+                          [2*(q1*q2-q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)],  # 惯性系->机体系
+                          [2*(q1*q3+q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2] ]  # 惯性系->机体系
+                self.GT=[ [q0**2+q1**2-q2**2-q3**2, 2*(q1*q2-q0*q3), 2*(q1*q3+q0*q2)],    #机体系->惯性系
+                          [2*(q1*q2+q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)],    # 机体系->惯性系
+                          [2*(q1*q3-q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2] ]  # 机体系->惯性系
                 self.gravityX = 0
                 self.gravityY = 0
                 self.gravityZ = 0
@@ -487,7 +490,7 @@ class AgentSimulator:
 
 class BattlefieldVisualizer:
 
-    def __init__(self, simulator):
+    def __init__(self, simulator, pos):
         self.sim = simulator
         self.fig, (self.ax, self.error_ax) = plt.subplots(1, 2, figsize=(18, 8))
         self.ax.set_xlim(-200, 200)
@@ -495,6 +498,15 @@ class BattlefieldVisualizer:
         self.ax.set_xlabel("X坐标 (m)")
         self.ax.set_ylabel("Y坐标 (m)")
         self.ax.set_title("卡尔曼传感器融合模拟")
+        self.poscont = 0
+        self.poslen = len(pos)
+        self.pos = pos
+
+        self.targets_scat = self.ax.scatter(
+            [], [], c="red", marker="o", s=50, label="目标"
+        )
+        # 更新散点图
+        self.targets_scat.set_offsets(pos)
 
         # 初始化绘图元素
         # self.mathpos = self.ax.scatter(
@@ -545,13 +557,17 @@ class BattlefieldVisualizer:
     def update(self, frame):
         """动画更新函数"""
         self.poscont += 1
-        if self.poscont >= self.poslen:
-            return
+        # if self.poscont >= self.poslen:
+        #     return
         # 更新所有目标
         sim = self.sim
         #获取相对起始点的位移
-        carpos = sim.mycar.carUpdate(pos[self.poscont][0],pos[self.poscont][1])
-        self.gps_pos.append(carpos)
+        if len(self.pos)>1:
+            carpos = sim.mycar.carUpdate(self.pos[self.poscont][0],self.pos[self.poscont][1])
+            self.gps_pos.append(carpos)
+        else:
+            carpos = sim.mycar.carUpdate(self.pos[0][0], self.pos[0][1])
+            self.gps_pos.append(carpos)
 
         #获取加速度
         acc = sim.mynw.myQua.QuaternionCal()
@@ -576,27 +592,89 @@ class BattlefieldVisualizer:
         self.kalm_gps_pos.set_data(updata[:,0]-carpos[:,0], updata[:,1]-carpos[:,1])
 
         # 返回所有需要重绘的对象
-        return (tuple(self.gps_pos)
-            + tuple(self.math_pos)
-            + tuple(self.kalm_pos)
-            + tuple(self.math_gps_pos)
-            + tuple(self.kalm_gps_pos))
+        return (self.targets_scat,self.gps_pos,self.math_pos,self.kalm_pos,self.math_gps_pos,self.kalm_gps_pos)
 
+class ParseFile:
+    def __init__(self):
+        self.file_path = "D:/installSoftware/36_Pycharm/LQ-TOOL-BAR/LvProject/1soc_encrypt_20260202_113619decode.log"
+        self.keyWord = "/usbAppGNSS"  # 需要过滤的关键词
+
+    def parse_file_dialog(self):
+
+        self.gpsBuffer = []
+        self.gpsBufferDetail = []
+        gpsBufferCell = {}
+        self.pos = [[0,0]]
+        self.k=0
+
+        try:
+            if (".log" not in str(self.file_path)):
+                self.text_display.setText("!!!!not log file!!!!")
+                return self.pos
+            lines = []
+            with open(self.file_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    lines.append(line.strip())#读取每行截止到换行符
+            for gpsline in lines :
+                if(self.keyWord in gpsline):
+                    self.k += 1
+                    self.gpsBuffer.append(gpsline)
+                    time = self.get_filter_str(gpsline, '', ' I/')  # 纬度
+                    part111 = gpsline.split(self.keyWord, 1)#防止日志错乱
+                    status = int(self.get_filter_str(part111[1], '): ', ' '))
+                    loc = self.get_filter_str(part111[1], 'lon::', ' lat::')#经度
+                    locNum = 0.0
+                    latNum = 0.0
+                    if(loc and loc.strip()):
+                        locNum = float(loc)  # 经度
+                    lat = self.get_filter_str(part111[1], 'lat::', ' ')  # 纬度
+                    if (lat and lat.strip()):
+                        latNum = float(lat)  # 经度
+                    # print("错误:", time,status,locNum,latNum)
+                    self.gpsBufferDetail.append({time,status,locNum,latNum})
+                    if self.k==1:
+                        self.pos[0]=[locNum, latNum]
+                    else:
+                        self.pos.appned([locNum,latNum])
+
+            return self.pos
+        except Exception as e:
+            print("错误:",e)
+            return self.pos
+        #打印
+
+    def get_filter_str(self,text, left,right):#分割解析数据
+        if text is None:
+            return ""
+        # 转为字符串（防数字等类型）
+        s = str(text)
+        # 按第一个 ':' 分割，取第一部分
+        if(left==''):
+            part = s.split(right, 1)
+            return part[0]
+        part = s.split(left, 1)
+        if(len(part)>1):
+            curstr = part[1]
+            part = curstr.split(right, 1)
+            if(len(part)>1):
+                return part[0]
+            else:
+                return ""
+        else:
+            return ""
+        # return s.split('：', 1)[0].strip()# strip() 去除前后空格 2)[0].strip()  # strip() 去除前后空格  1表示分隔1次 [1]表示第二部分
 
 # 主程序入口
 if __name__ == "__main__":
     # 获取定位并存储  从日志中获取
-    pos = []
+    myfile = ParseFile()
     #......
-    pos.append([1,2])
+    pos = myfile.parse_file_dialog()
 
-    poslen = len(pos)
-    poscont = 0
-
-    simulator = AgentSimulator(pos[0][0],pos[0][1])
+    simulator = AgentSimulator(pos)
 
     # 创建可视化器
-    visualizer = BattlefieldVisualizer(simulator)
+    visualizer = BattlefieldVisualizer(simulator,pos)
 
     # 定义动画更新函数
     def animate(frame):
@@ -606,7 +684,7 @@ if __name__ == "__main__":
     ani = FuncAnimation(
         visualizer.fig,
         animate,#更新函数
-        frames=np.arange(0, 200),#帧数
+        frames=np.arange(0, len(pos)),#帧数
         interval=100,#dt=50ms
         blit=True,#只更新变化区域
         repeat=False,#是否重复
