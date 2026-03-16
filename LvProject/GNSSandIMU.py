@@ -12,8 +12,8 @@ from matplotlib import rcParams
 class AgentSimulator:
 
     def __init__(self, pos):
-        lat0 = pos[0][1]
-        lon0 = pos[0][0]
+        lat0 = pos[0][2]
+        lon0 = pos[0][1]
         self.mycar = self.MyCar(lat0,lon0)
         self.mynw =  self.NetworkNode()
         self.mykalm = self.ExtendedKalmanFilter()
@@ -82,7 +82,7 @@ class AgentSimulator:
             self.Q = np.diag([0.1, 0.1, 0.01, 0.01, 0.001, 0.001])
 
             # 观测噪声协方差
-            self.R = np.diag([10 ** 2, 10 ** 2, 20 ** 2])  # 东北天
+            self.R = np.diag([10 ** 2, 10 ** 2])  # 东北
 
         def predict(self, dt, accx,accy):
             """预测步骤"""
@@ -118,13 +118,7 @@ class AgentSimulator:
             #观测值
             H = np.array([[1, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0]])
             z_pred = H @ self.x
-            z = np.array([
-                    [x],
-                    [y],
-                    [0],
-                    [0],
-                    [0],
-                    [0],])
+            z = np.array([[x,0,0,0,0,0],[0,y,0,0,0,0]])
             # 计算残差
             y = z - z_pred
 
@@ -291,9 +285,9 @@ class AgentSimulator:
             def ENDtoBody(self, q,xyz):
                 q0,q1,q2,q3 = q
                 x,y,z=xyz
-                self.G[3][3] =  {{q0**2+q1**2-q2**2-q3**2, 2*(q1*q2+q0*q3), 2*(q1*q3-q0*q2)},   # 惯性系->机体系
-                                 {2*(q1*q2-q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)},   # 惯性系->机体系
-                                 {2*(q1*q3+q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2} }  # 惯性系->机体系
+                self.G =  [[q0**2+q1**2-q2**2-q3**2, 2*(q1*q2+q0*q3), 2*(q1*q3-q0*q2)],   # 惯性系->机体系
+                                 [2*(q1*q2-q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)],   # 惯性系->机体系
+                                 [2*(q1*q3+q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2] ]  # 惯性系->机体系
                 x1 = self.G[0][0]*x+self.G[0][1]*y+self.G[0][2]*z
                 y1 = self.G[1][0]*x+self.G[1][1]*y+self.G[1][2]*z
                 z1 = self.G[2][0]*x+self.G[2][1]*y+self.G[2][2]*z
@@ -301,9 +295,9 @@ class AgentSimulator:
             def BodytoEND(self, q,xyz):
                 q0,q1,q2,q3 = q
                 x,y,z=xyz
-                self.GT[3][3] = {{q0**2+q1**2-q2**2-q3**2, 2*(q1*q2-q0*q3), 2*(q1*q3+q0*q2)},   # 惯性系->机体系
-                                 {2*(q1*q2+q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)},   # 惯性系->机体系
-                                 {2*(q1*q3-q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2} }  # 惯性系->机体系
+                self.GT = [[q0**2+q1**2-q2**2-q3**2, 2*(q1*q2-q0*q3), 2*(q1*q3+q0*q2)],   # 惯性系->机体系
+                                 [2*(q1*q2+q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)],   # 惯性系->机体系
+                                 [2*(q1*q3-q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2] ]  # 惯性系->机体系
                 x1 = self.GT[0][0]*x+self.GT[0][1]*y+self.GT[0][2]*z
                 y1 = self.GT[1][0]*x+self.GT[1][1]*y+self.GT[1][2]*z
                 z1 = self.GT[2][0]*x+self.GT[2][1]*y+self.GT[2][2]*z
@@ -414,7 +408,7 @@ class AgentSimulator:
                 IMU_ROLL= np.atan2(EndAngle0, EndAngle1) * DEG_ANG
 
                 #计算加速度计在惯性系的数据
-                Acc = self.BodytoEND(self, [self.q0,self.q1,self.q2,self.q3],[self.AccX,self.AccY,self.AccZ])
+                Acc = self.BodytoEND([self.q0,self.q1,self.q2,self.q3],[self.AccX,self.AccY,self.AccZ])
                 AX,AY,AZ = Acc
                 return [AX,AY,AZ]
 
@@ -453,6 +447,7 @@ class AgentSimulator:
                     self.miu_phy = self.miu_phy + np.random.normal(0, self.sigma)
                     self.miu_psi = self.miu_psi + self.detect(self.dt) + np.random.normal(0, self.sigma)
                     self.dt += 0.1
+                    return np.array([self.miu_phy,self.miu_sita,self.miu_psi])
 
                 def detect(self, dt):
                     auto = 0.0
@@ -473,10 +468,11 @@ class AgentSimulator:
                     self.msigma = 0.1
                     self.dt = 0
                 def measure(self):
-                    self.mx = self.mx + np.random.normal(0, self.msigma) + self.detect(self, self.dt)
-                    self.my = self.my + np.random.normal(0, self.msigma) - self.detect(self, self.dt)
+                    self.mx = self.mx + np.random.normal(0, self.msigma) + self.detect(self.dt)
+                    self.my = self.my + np.random.normal(0, self.msigma) - self.detect(self.dt)
                     self.mz = self.mz + np.random.normal(0, self.msigma)
                     self.dt += 0.1
+                    return np.array([self.mx,self.my,self.mz])
                 def detect(self, dt):
                     auto = 0.0
                     if dt < 2:
@@ -500,32 +496,18 @@ class BattlefieldVisualizer:
         self.ax.set_title("卡尔曼传感器融合模拟")
         self.poscont = 0
         self.poslen = len(pos)
-        self.pos = pos
+        self.pos = [ [item[1], item[2]] for item in pos ]
+        self.posSt = [ [item[0]] for item in pos ]
 
-        self.targets_scat = self.ax.scatter(
-            [], [], c="red", marker="o", s=50, label="目标"
+        self.gpspos = self.ax.scatter(
+            [], [], c="black", marker="o", s=50, label="GPS定位"
         )
-        # 更新散点图
-        self.targets_scat.set_offsets(pos)
 
-        # 初始化绘图元素
-        # self.mathpos = self.ax.scatter(
-        #     [], [], c="red", marker="o", s=50, label="MATH"
-        # )
-        # self.gpspos = self.ax.scatter(
-        #     [], [], c="black", marker="x", s=100, label="GPS"
-        # )
-        # self.kalmpos = self.ax.scatter(
-        #     [], [], c="blue", marker="|", s=150, label="Kalm"
-        # )
-        (self.gpspos,) = self.ax.plot(
-            [], [], "k.", markersize=4, alpha=0.3, label="GPS定位"
-        )
         (self.mathpos,) = self.ax.plot(
-            [], [], "r.", markersize=4, alpha=0.3, label="动力学预测"
+            [], [], "r^", markersize=4, alpha=0.3, label="动力学预测"
         )
         (self.kalmpos,) = self.ax.plot(
-            [], [], "b.", markersize=4, alpha=0.3, label="卡尔曼融合"
+            [], [], "bX", markersize=5, alpha=0.3, label="卡尔曼融合"
         )
 
         # 误差统计图表
@@ -568,35 +550,57 @@ class BattlefieldVisualizer:
         else:
             carpos = sim.mycar.carUpdate(self.pos[0][0], self.pos[0][1])
             self.gps_pos.append(carpos)
+            self.poscont = 0
 
         #获取加速度
         acc = sim.mynw.myQua.QuaternionCal()
 
         #计算卡尔曼
         pre = sim.mykalm.predict(0.1, acc[0],acc[1])
-        self.math_pos.append(pre)
+        prev = [pre[0][0],pre[1][1]]
+        self.math_pos.append(prev)
 
         updata = sim.mykalm.update(carpos[0],carpos[1])
-        self.kalm_pos.append(updata)
+        updatav = [updata[0][0],updata[1][1]]
+        self.kalm_pos.append(updatav)
 
         #计算误差
-        self.math_gps_pos.append(pre-carpos)
-        self.kalm_gps_pos.append(updata-carpos)
+        m_p = np.array(prev)-np.array(carpos)
+        m_p = m_p.tolist()
+        self.math_gps_pos.append(m_p)
+        k_p = np.array(updatav)-np.array(carpos)
+        k_p = k_p.tolist()
+        self.kalm_gps_pos.append(k_p)
 
         # 更新绘图数据
-        self.gps_pos.set_data(carpos[:,0], carpos[:,1])
-        self.math_pos.set_data(pre[:,0], pre[:,1])
-        self.kalm_pos.set_data(updata[:,0], updata[:,1])
+        gps_pos = np.array(self.gps_pos)
+        # self.gpspos.set_data(gps_pos[:,0], gps_pos[:,1])
+        self.gpspos.set_offsets(gps_pos)
+        if self.posSt[self.poscont]==1:
+            self.gpspos.set_facecolors("black")
+        else:
+            self.gpspos.set_facecolors("yellow")
 
-        self.math_gps_pos.set_data(pre[:,0]-carpos[:,0], pre[:,1]-carpos[:,1])
-        self.kalm_gps_pos.set_data(updata[:,0]-carpos[:,0], updata[:,1]-carpos[:,1])
+        math_pos = np.array(self.math_pos)
+        self.mathpos.set_data(math_pos[:,0], math_pos[:,1])
+        kalm_pos = np.array(self.kalm_pos)
+        self.kalmpos.set_data(kalm_pos[:,0], kalm_pos[:,1])
+
+        math_gps_pos = np.array(self.math_gps_pos)
+        self.math_gps.set_data(math_gps_pos[:,0], math_gps_pos[:,1])
+        kalm_gps_pos = np.array(self.kalm_gps_pos)
+        self.kalm_gps.set_data(kalm_gps_pos[:,0], kalm_gps_pos[:,1])
 
         # 返回所有需要重绘的对象
-        return (self.targets_scat,self.gps_pos,self.math_pos,self.kalm_pos,self.math_gps_pos,self.kalm_gps_pos)
+        return (self.gpspos, self.mathpos, self.kalmpos, self.math_gps, self.kalm_gps)
 
 class ParseFile:
     def __init__(self):
-        self.file_path = "D:/installSoftware/36_Pycharm/LQ-TOOL-BAR/LvProject/1soc_encrypt_20260202_113619decode.log"
+        a=0
+        if a==1:
+            self.file_path = "D:/installSoftware/36_Pycharm/LQ-TOOL-BAR/LvProject/1soc_encrypt_20260202_113619decode.log"
+        else:
+            self.file_path = "D:/01_GeneralSoftware/33_PyCharm/workspace/LvProject/1soc_encrypt_20260202_113619decode.log"
         self.keyWord = "/usbAppGNSS"  # 需要过滤的关键词
 
     def parse_file_dialog(self):
@@ -606,7 +610,6 @@ class ParseFile:
         gpsBufferCell = {}
         self.pos = [[0,0]]
         self.k=0
-
         try:
             if (".log" not in str(self.file_path)):
                 self.text_display.setText("!!!!not log file!!!!")
@@ -631,17 +634,17 @@ class ParseFile:
                     if (lat and lat.strip()):
                         latNum = float(lat)  # 经度
                     # print("错误:", time,status,locNum,latNum)
-                    self.gpsBufferDetail.append({time,status,locNum,latNum})
+                    self.gpsBufferDetail.append([time,status,locNum,latNum])
                     if self.k==1:
-                        self.pos[0]=[locNum, latNum]
+                        self.pos[0]=[status,locNum, latNum]
                     else:
-                        self.pos.appned([locNum,latNum])
-
+                        self.pos.append([status,locNum,latNum])
+                    print("pos:",self.gpsBufferDetail[self.k][1],self.pos[self.k][2])
             return self.pos
         except Exception as e:
             print("错误:",e)
             return self.pos
-        #打印
+
 
     def get_filter_str(self,text, left,right):#分割解析数据
         if text is None:
@@ -668,11 +671,15 @@ class ParseFile:
 if __name__ == "__main__":
     # 获取定位并存储  从日志中获取
     myfile = ParseFile()
-    #......
+    k=1
+    print("错误----:",k)
     pos = myfile.parse_file_dialog()
+    k+=1
+    print("错误----:",k)
 
     simulator = AgentSimulator(pos)
-
+    k+=1
+    print("错误----:",k)
     # 创建可视化器
     visualizer = BattlefieldVisualizer(simulator,pos)
 
@@ -697,6 +704,3 @@ if __name__ == "__main__":
     # 启动动画显示
     plt.tight_layout()
     plt.show()
-
-    # 动画结束后输出精度报告
-    visualizer.print_accuracy_report()
