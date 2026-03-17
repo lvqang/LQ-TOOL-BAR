@@ -30,7 +30,7 @@ class AgentSimulator:
             e2 = 0.00669437999014  # WGS84第一偏心率平方
             self.N = a / np.sqrt(1 - e2 * np.sin(lat0)**2)  # 卯酉圈曲率半径
 
-        def carUpdate(self, next_lat, next_lon, next_h=10, higt_fixed=1, dt=0.1):
+        def carUpdate(self, next_lon, next_lat, next_h=10, higt_fixed=1, dt=0.1):
 
             if higt_fixed==1:
                 h = self.h0
@@ -597,7 +597,7 @@ class BattlefieldVisualizer:
 
 class ParseFile:
     def __init__(self):
-        a=0
+        a=1
         if a==1:
             self.file_path = "D:/installSoftware/36_Pycharm/LQ-TOOL-BAR/LvProject/1soc_encrypt_20260202_113619decode.log"
         else:
