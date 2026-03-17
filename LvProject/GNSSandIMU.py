@@ -14,6 +14,7 @@ class AgentSimulator:
     def __init__(self, pos):
         lat0 = pos[0][2]
         lon0 = pos[0][1]
+        print("ini loc:",lon0,lat0)
         self.mycar = self.MyCar(lat0,lon0)
         self.mynw =  self.NetworkNode()
         self.mykalm = self.ExtendedKalmanFilter()
@@ -551,7 +552,7 @@ class BattlefieldVisualizer:
             carpos = sim.mycar.carUpdate(self.pos[0][0], self.pos[0][1])
             self.gps_pos.append(carpos)
             self.poscont = 0
-
+        print("carpos",carpos)
         #获取加速度
         acc = sim.mynw.myQua.QuaternionCal()
 
@@ -608,7 +609,7 @@ class ParseFile:
         self.gpsBuffer = []
         self.gpsBufferDetail = []
         gpsBufferCell = {}
-        self.pos = [[0,0]]
+        self.pos = []
         self.k=0
         try:
             if (".log" not in str(self.file_path)):
@@ -618,28 +619,32 @@ class ParseFile:
             with open(self.file_path, 'r', encoding='utf-8') as f:
                 for line in f:
                     lines.append(line.strip())#读取每行截止到换行符
-            for gpsline in lines :
-                if(self.keyWord in gpsline):
-                    self.k += 1
-                    self.gpsBuffer.append(gpsline)
-                    time = self.get_filter_str(gpsline, '', ' I/')  # 纬度
-                    part111 = gpsline.split(self.keyWord, 1)#防止日志错乱
-                    status = int(self.get_filter_str(part111[1], '): ', ' '))
-                    loc = self.get_filter_str(part111[1], 'lon::', ' lat::')#经度
-                    locNum = 0.0
-                    latNum = 0.0
-                    if(loc and loc.strip()):
-                        locNum = float(loc)  # 经度
-                    lat = self.get_filter_str(part111[1], 'lat::', ' ')  # 纬度
-                    if (lat and lat.strip()):
-                        latNum = float(lat)  # 经度
-                    # print("错误:", time,status,locNum,latNum)
-                    self.gpsBufferDetail.append([time,status,locNum,latNum])
-                    if self.k==1:
-                        self.pos[0]=[status,locNum, latNum]
-                    else:
-                        self.pos.append([status,locNum,latNum])
-                    print("pos:",self.gpsBufferDetail[self.k][1],self.pos[self.k][2])
+            try:
+                for gpsline in lines :
+                    if(self.keyWord in gpsline):
+                        self.gpsBuffer.append(gpsline)
+                        time = self.get_filter_str(gpsline, '', ' I/')  # 纬度
+                        part111 = gpsline.split(self.keyWord, 1)#防止日志错乱
+                        status = int(self.get_filter_str(part111[1], '): ', ' '))
+                        loc = self.get_filter_str(part111[1], 'lon::', ' lat::')#经度
+                        locNum = 0.0
+                        latNum = 0.0
+
+                        if(loc and loc.strip()):
+                            locNum = float(loc)  # 经度
+
+                        lat = self.get_filter_str(part111[1], 'lat::', ' ')  # 纬度
+                        if (lat and lat.strip()):
+                            latNum = float(lat)  # 经度
+                        # print("错误:", time,status,locNum,latNum)
+                        self.gpsBufferDetail.append([time,status,locNum,latNum])
+                        if(status==1):
+                            self.k=1
+                        if(self.k==1):
+                            self.pos.append([status,locNum/1000000,latNum/1000000])
+            except Exception as e:
+                print("111:",e)
+            # print("pos:",self.pos[31][1])
             return self.pos
         except Exception as e:
             print("错误:",e)
@@ -671,15 +676,11 @@ class ParseFile:
 if __name__ == "__main__":
     # 获取定位并存储  从日志中获取
     myfile = ParseFile()
-    k=1
-    print("错误----:",k)
+
     pos = myfile.parse_file_dialog()
-    k+=1
-    print("错误----:",k)
 
     simulator = AgentSimulator(pos)
-    k+=1
-    print("错误----:",k)
+
     # 创建可视化器
     visualizer = BattlefieldVisualizer(simulator,pos)
 
