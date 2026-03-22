@@ -3,11 +3,11 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.patches import Ellipse
 from matplotlib import rcParams
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
-from matplotlib.patches import Ellipse
-from matplotlib import rcParams
+import random
+# 设置中文字体
+rcParams["font.sans-serif"] = ["SimHei"]
+rcParams["axes.unicode_minus"] = False
+
 
 class AgentSimulator:
 
@@ -18,11 +18,12 @@ class AgentSimulator:
         self.mycar = self.MyCar(lat0,lon0)
         self.mynw =  self.NetworkNode()
         self.mykalm = self.ExtendedKalmanFilter()
+        self.mykalmPre = self.ExtendedKalmanFilter()
 
 
     class MyCar:
 
-        def __init__(self, lat0=23.108, lon0=113.2647, h0=10):
+        def __init__(self, lat0, lon0, h0=0):
             self.lat0 = lat0
             self.lon0 = lon0
             self.h0   = h0
@@ -30,16 +31,22 @@ class AgentSimulator:
             e2 = 0.00669437999014  # WGS84第一偏心率平方
             self.N = a / np.sqrt(1 - e2 * np.sin(lat0)**2)  # 卯酉圈曲率半径
 
-        def carUpdate(self, next_lon, next_lat, next_h=10, higt_fixed=1, dt=0.1):
+        def carUpdate(self, next_lon, next_lat, next_h=0, higt_fixed=1, dt=0.1):
 
             if higt_fixed==1:
                 h = self.h0
             else:
                 h=next_h
             # 北方向（N）
-            self.pos_N = (next_lat - self.lat0) * (self.N + self.h0)
+            if(next_lat<1):
+                self.pos_N = random.randint(150, 250)
+            else:
+                self.pos_N = (next_lat - self.lat0) * (self.N + self.h0)
             # 东方向（E）
-            self.pos_E = (next_lon - self.lon0) * (self.N + self.h0) * np.cos(self.lat0)
+            if (next_lon < 1):
+                self.pos_E = random.randint(150, 250)
+            else:
+                self.pos_E = (next_lon - self.lon0) * (self.N + self.h0) * np.cos(self.lat0)
             # 天方向（U）
             self.pos_U = h - self.h0
             return [self.pos_N,self.pos_E]
@@ -393,12 +400,19 @@ class AgentSimulator:
                 self.q3 = q3+( q0*GloZ + q1*GloY - q2*GloX)*self.halftime
                 #归一化
                 norqul = np.sqrt(self.q0**2+self.q1**2+self.q2**2+self.q3**2)
-                self.q0=self.q0/norqul
-                self.q1=self.q1/norqul
-                self.q2=self.q2/norqul
-                self.q3=self.q3/norqul
+                if norqul>1e-6:
+                    self.q0 = self.q0 / norqul
+                    self.q1 = self.q1 / norqul
+                    self.q2 = self.q2 / norqul
+                    self.q3 = self.q3 / norqul
+                else:
+                    print("Qua:norqul = %f", norqul)
+                    self.q0 = 1
+                    self.q1 = 0
+                    self.q2 = 0
+                    self.q3 = 0
 
-                #计算欧拉角
+                    #计算欧拉角
                 EndAngle0 = 2 * (self.q0 * self.q1 + self.q2 * self.q3)
                 EndAngle1 = 1 - 2 * (self.q1**2 + self.q2**2)
                 EndAngle2 = 2 * (self.q1 * self.q3 - self.q0 * self.q2)
@@ -444,18 +458,20 @@ class AgentSimulator:
                     self.sigma = 0.0002  # rad/s
 
                 def measure(self):
-                    self.miu_sita = self.miu_sita + np.random.normal(0, self.sigma)
-                    self.miu_phy = self.miu_phy + np.random.normal(0, self.sigma)
-                    self.miu_psi = self.miu_psi + self.detect(self.dt) + np.random.normal(0, self.sigma)
+                    self.miu_sita = np.random.normal(0, self.sigma)
+                    self.miu_phy = np.random.normal(0, self.sigma)
+                    self.miu_psi = self.detect(self.dt) + np.random.normal(0, self.sigma)
                     self.dt += 0.1
                     return np.array([self.miu_phy,self.miu_sita,self.miu_psi])
 
                 def detect(self, dt):
                     auto = 0.0
-                    if dt < 2:
-                        auto = np.radians(20)  # 右转20°
-                    elif dt >= 2 and dt <= 4:
-                        auto = np.radians(-20)  # 左转20°
+                    if dt < 10:
+                        auto = np.radians(60)  # 右转20°
+                    elif dt >= 10 and dt <= 20:
+                        auto = 0
+                    elif dt >= 20 and dt <= 30:
+                        auto = np.radians(-60)  # 左转20°
                     else:
                         auto = 0  # 直行
                     return auto
@@ -489,26 +505,26 @@ class BattlefieldVisualizer:
 
     def __init__(self, simulator, pos):
         self.sim = simulator
-        self.fig, (self.ax, self.error_ax) = plt.subplots(1, 2, figsize=(18, 8))
-        self.ax.set_xlim(-200, 200)
-        self.ax.set_ylim(-200, 200)
+        self.fig, (self.ax, self.error_ax) = plt.subplots(1, 2, figsize=(16, 6))
+        self.ax.set_xlim(-300, 300)
+        self.ax.set_ylim(-300, 300)
         self.ax.set_xlabel("X坐标 (m)")
         self.ax.set_ylabel("Y坐标 (m)")
         self.ax.set_title("卡尔曼传感器融合模拟")
         self.poscont = 0
         self.poslen = len(pos)
         self.pos = [ [item[1], item[2]] for item in pos ]
-        self.posSt = [ [item[0]] for item in pos ]
+        self.posSt = [ item[0] for item in pos ]
 
         self.gpspos = self.ax.scatter(
-            [], [], c="black", marker="o", s=50, label="GPS定位"
+            [], [], c="black", marker=".", s=10, label="GPS定位"
         )
 
         (self.mathpos,) = self.ax.plot(
-            [], [], "r^", markersize=4, alpha=0.3, label="动力学预测"
+            [], [], "r^", markersize=4, alpha=0.5, label="动力学预测"
         )
         (self.kalmpos,) = self.ax.plot(
-            [], [], "bX", markersize=5, alpha=0.3, label="卡尔曼融合"
+            [], [], "bX", markersize=4, alpha=0.5, label="卡尔曼融合"
         )
 
         # 误差统计图表
@@ -527,6 +543,7 @@ class BattlefieldVisualizer:
 
         # 历史数据存储
         self.gps_pos = []
+        self.color = []
         self.math_pos = []
         self.kalm_pos = []
 
@@ -536,10 +553,19 @@ class BattlefieldVisualizer:
         # 图例
         self.ax.legend(loc="upper right", fontsize=8)
         self.error_ax.legend(loc="upper right", fontsize=8)
+        #创建传感器数据显示
+        self.info_text = self.ax.text(
+            0.02, 0.98,
+            "",  # 初始内容为空
+            transform=self.ax.transAxes,
+            fontsize=9,
+            verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5)  # 设置背景框样式
+        )
 
     def update(self, frame):
         """动画更新函数"""
-        self.poscont += 1
+
         # if self.poscont >= self.poslen:
         #     return
         # 更新所有目标
@@ -548,23 +574,36 @@ class BattlefieldVisualizer:
         if len(self.pos)>1:
             carpos = sim.mycar.carUpdate(self.pos[self.poscont][0],self.pos[self.poscont][1])
             self.gps_pos.append(carpos)
+            if(self.posSt[self.poscont]==1):
+                self.color.append("black")
+            else:
+                self.color.append("yellow")
+                print("yellow")
         else:
             carpos = sim.mycar.carUpdate(self.pos[0][0], self.pos[0][1])
             self.gps_pos.append(carpos)
             self.poscont = 0
-        print("carpos",carpos)
+        # print("carpos",self.poscont, self.posSt[self.poscont],carpos, self.poslen )
+        if(self.poscont+1 >=len(self.pos)):
+            self.poscont = self.poscont
+        else:
+            self.poscont += 1
         #获取加速度
         acc = sim.mynw.myQua.QuaternionCal()
 
         #计算卡尔曼
         pre = sim.mykalm.predict(0.1, acc[0],acc[1])
         prev = [pre[0][0],pre[1][1]]
-        self.math_pos.append(prev)
-
-        updata = sim.mykalm.update(carpos[0],carpos[1])
-        updatav = [updata[0][0],updata[1][1]]
+        if (self.posSt[self.poscont] == 1):
+            updata = sim.mykalm.update(carpos[0], carpos[1])
+            updatav = [updata[0][0], updata[1][1]]
+        else:
+            updatav = prev
         self.kalm_pos.append(updatav)
-
+        #仅做预测
+        pre = sim.mykalmPre.predict(0.1, acc[0], acc[1])
+        prev = [pre[0][0], pre[1][1]]
+        self.math_pos.append(prev)
         #计算误差
         m_p = np.array(prev)-np.array(carpos)
         m_p = m_p.tolist()
@@ -575,12 +614,9 @@ class BattlefieldVisualizer:
 
         # 更新绘图数据
         gps_pos = np.array(self.gps_pos)
-        # self.gpspos.set_data(gps_pos[:,0], gps_pos[:,1])
         self.gpspos.set_offsets(gps_pos)
-        if self.posSt[self.poscont]==1:
-            self.gpspos.set_facecolors("black")
-        else:
-            self.gpspos.set_facecolors("yellow")
+        self.gpspos.set_facecolors(self.color)
+        self.gpspos.set_edgecolors(self.color)
 
         math_pos = np.array(self.math_pos)
         self.mathpos.set_data(math_pos[:,0], math_pos[:,1])
@@ -592,8 +628,28 @@ class BattlefieldVisualizer:
         kalm_gps_pos = np.array(self.kalm_gps_pos)
         self.kalm_gps.set_data(kalm_gps_pos[:,0], kalm_gps_pos[:,1])
 
+        AccX = sim.mynw.myQua.AccX
+        AccY = sim.mynw.myQua.AccY
+        AccZ = sim.mynw.myQua.AccZ
+        GyroX = sim.mynw.myQua.GyroX
+        GyroY = sim.mynw.myQua.GyroY
+        GyroZ = sim.mynw.myQua.GyroZ
+        MagX = sim.mynw.myQua.MagX
+        MagY = sim.mynw.myQua.MagY
+        MagZ = sim.mynw.myQua.MagZ
+        #显示数据
+        info_str = (
+            f"Frame: {frame}\n"
+            f"加速度计: {AccX:.2f}, {AccY:.2f}, {AccZ:.2f} m/s²\n"
+            f" 陀螺仪: {GyroX:.2f},{GyroY:.2f},{GyroZ:.2f} rad/s\n"
+            f" 磁力计: {MagX:.2f}, {MagY:.2f}, {MagZ:.2f}  μT"  # 假设 dt=0.1s
+        )
+        # 使用 set_text 更新内容，效率最高
+        self.info_text.set_text(info_str)
+
+
         # 返回所有需要重绘的对象
-        return (self.gpspos, self.mathpos, self.kalmpos, self.math_gps, self.kalm_gps)
+        return (self.gpspos, self.mathpos, self.kalmpos, self.math_gps, self.kalm_gps, self.info_text)
 
 class ParseFile:
     def __init__(self):
@@ -642,6 +698,7 @@ class ParseFile:
                             self.k=1
                         if(self.k==1):
                             self.pos.append([status,locNum/1000000,latNum/1000000])
+                            # print("pos",locNum/1000000,latNum/1000000)
             except Exception as e:
                 print("111:",e)
             # print("pos:",self.pos[31][1])
@@ -692,7 +749,7 @@ if __name__ == "__main__":
     ani = FuncAnimation(
         visualizer.fig,
         animate,#更新函数
-        frames=np.arange(0, len(pos)),#帧数
+        frames=np.arange(0, len(pos)-2),#帧数
         interval=100,#dt=50ms
         blit=True,#只更新变化区域
         repeat=False,#是否重复
