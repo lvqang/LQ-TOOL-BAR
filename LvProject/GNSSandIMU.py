@@ -294,8 +294,8 @@ class AgentSimulator:
                 q0,q1,q2,q3 = q
                 x,y,z=xyz
                 self.G =  [[q0**2+q1**2-q2**2-q3**2, 2*(q1*q2+q0*q3), 2*(q1*q3-q0*q2)],   # 惯性系->机体系
-                                 [2*(q1*q2-q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)],   # 惯性系->机体系
-                                 [2*(q1*q3+q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2] ]  # 惯性系->机体系
+                           [2*(q1*q2-q0*q3), q0**2-q1**2+q2**2-q3**2, 2*(q2*q3-q0*q1)],   # 惯性系->机体系
+                           [2*(q1*q3+q0*q2), 2*(q2*q3-q0*q1), q0**2-q1**2-q2**2+q3**2] ]  # 惯性系->机体系
                 x1 = self.G[0][0]*x+self.G[0][1]*y+self.G[0][2]*z
                 y1 = self.G[1][0]*x+self.G[1][1]*y+self.G[1][2]*z
                 z1 = self.G[2][0]*x+self.G[2][1]*y+self.G[2][2]*z
@@ -320,7 +320,7 @@ class AgentSimulator:
                 #重力加速度转为机体系
                 self.gravityX = 2*(q1*q3-q0*q2)
                 self.gravityY = 2*(q2*q3-q0*q1)
-                self.gravityZ = 2*(q1**2+q2**2)-1#应该是-1
+                self.gravityZ = 2*(q1**2+q2**2)+1#应该是-1
 
                 Acc = self.sensors["G-sensor"].measure()
                 self.AccX = Acc[0]
@@ -335,20 +335,10 @@ class AgentSimulator:
                 self.MagY = Mag[1]
                 self.MagZ = Mag[2]
 
-                norqul = np.sqrt(Acc[0]**2+Acc[1]**2+Acc[2]**2)
-                if norqul>1e-6:
-                    self.AccX /= norqul#归一化
-                    self.AccY /= norqul
-                    self.AccZ /= norqul
-                else:
-                    print("[G-sensor]:norqul = %f",norqul)
-                    self.AccX = 0
-                    self.AccY = 0
-                    self.AccZ = 1
                 #加速度计和重力分量四元数 叉积法获取角误差
-                errAccX = self.AccY*self.gravityZ-self.AccZ*self.gravityY#Acc.gravity.sinθ
-                errAccY = self.AccZ*self.gravityX-self.AccX*self.gravityZ#Acc.gravity都是模长为1
-                errAccZ = self.AccX*self.gravityY-self.AccY*self.gravityX#所以上述== sinθ≈θ
+                errAccX = self.AccY*self.gravityZ-self.AccZ*self.gravityY#Acc.gravity.sinθ   pitch
+                errAccY = self.AccZ*self.gravityX-self.AccX*self.gravityZ#Acc.gravity都是模长为1  roll
+                errAccZ = self.AccX*self.gravityY-self.AccY*self.gravityX#所以上述== sinθ≈θ  yaw
                 #低通滤波器
                 f = 20#截止频率
                 alpha = 2*3.14*f*self.deltaT/(1 + 2 * 3.14 * f * self.deltaT)
@@ -376,8 +366,8 @@ class AgentSimulator:
                 ANGLE   = 0.017453  #°转为弧度
                 DEG_ANG = 57.29578  #弧度转为°
                 #计算积分环节
-                Ki = 1
-                Kp = 1
+                Ki = 2
+                Kp = 0.02
                 Ki_z = 1
                 Kp_z = 1
                 yawcorrect = 0
@@ -406,7 +396,7 @@ class AgentSimulator:
                     self.q2 = self.q2 / norqul
                     self.q3 = self.q3 / norqul
                 else:
-                    print("Qua:norqul = %f", norqul)
+                    # print("Qua:norqul = %f", norqul)
                     self.q0 = 1
                     self.q1 = 0
                     self.q2 = 0
@@ -425,6 +415,8 @@ class AgentSimulator:
                 #计算加速度计在惯性系的数据
                 Acc = self.BodytoEND([self.q0,self.q1,self.q2,self.q3],[self.AccX,self.AccY,self.AccZ])
                 AX,AY,AZ = Acc
+                # print("",[self.q0,self.q1,self.q2,self.q3],Acc)
+                # print("", Acc)
                 return [AX,AY,AZ]
 
             def To_180_degrees(self, x):
@@ -438,14 +430,38 @@ class AgentSimulator:
                 def __init__(self):
                     self.miu_x = 0
                     self.miu_y = 0
-                    self.miu_z = 1  # 惯性系下
+                    self.miu_z = -1  # 惯性系下
 
-                    self.sigma = 0.01  # 单位g
+                    self.sigma = 0  # 单位g  原来0.01
+                    self.dt=0
 
                 def measure(self):
-                    self.mea_x = self.miu_x + np.random.normal(0, self.sigma)
-                    self.mea_y = self.miu_y + np.random.normal(0, self.sigma)
-                    self.mea_z = self.miu_z + np.random.normal(0, self.sigma)  # 机体系
+                    if self.dt <= 0.2:
+                        autox = -0.2
+                        autoy = 0
+                    elif self.dt >= 5.0 and self.dt <= 5.2:
+                        autox = 0.4
+                        autoy = -0.2
+                    elif self.dt >= 10.0 and self.dt <= 10.2:
+                        autox = 0.2
+                        autoy = 0.4
+                    elif self.dt >= 15.0 and self.dt <= 15.2:
+                        autox = -0.4
+                        autoy = 0.2
+                    elif self.dt >= 20.0 and self.dt <= 20.2:
+                        autox = -0.2
+                        autoy = -0.4
+                    elif self.dt >= 25.0 and self.dt <= 25.2:
+                        autox = 0.4
+                        autoy = 0
+                    else:
+                        autox = 0
+                        autoy = 0
+                    self.dt += 0.1
+                    self.mea_x = autox + np.random.normal(0, self.sigma)
+                    self.mea_y = autoy + np.random.normal(0, self.sigma)
+                    self.mea_z = self.miu_z+np.random.normal(0, self.sigma)  # 机体系
+                    # print("11", [self.mea_x,self.mea_y,self.mea_z])
                     return np.array([self.mea_x, self.mea_y, self.mea_z])
 
             class Gyro:
@@ -455,7 +471,7 @@ class AgentSimulator:
                     self.miu_phy = 0.0  # 机体系
                     self.dt = 0
 
-                    self.sigma = 0.0002  # rad/s
+                    self.sigma = 0  # rad/s  原来0.0001
 
                 def measure(self):
                     self.miu_sita = np.random.normal(0, self.sigma)
@@ -467,11 +483,13 @@ class AgentSimulator:
                 def detect(self, dt):
                     auto = 0.0
                     if dt < 10:
-                        auto = np.radians(60)  # 右转20°
+                        auto = 0
+                        # auto = np.radians(60)  # 右转20°
                     elif dt >= 10 and dt <= 20:
                         auto = 0
                     elif dt >= 20 and dt <= 30:
-                        auto = np.radians(-60)  # 左转20°
+                        auto = 0
+                        # auto = np.radians(-60)  # 左转20°
                     else:
                         auto = 0  # 直行
                     return auto
@@ -479,23 +497,25 @@ class AgentSimulator:
             class Magne:
                 def __init__(self):
                     self.mx = 0.0#惯性系下的
-                    self.my = 45.0#数据自己定义 可以根据实际情况调整
+                    self.my = 0.0#数据自己定义 可以根据实际情况调整
                     self.mz = 0.0
 
-                    self.msigma = 0.1
+                    self.msigma = 0#原来是0.1
                     self.dt = 0
                 def measure(self):
-                    self.mx = self.mx + np.random.normal(0, self.msigma) + self.detect(self.dt)
-                    self.my = self.my + np.random.normal(0, self.msigma) - self.detect(self.dt)
-                    self.mz = self.mz + np.random.normal(0, self.msigma)
+                    self.mx = np.random.normal(0, self.msigma) + self.detect(self.dt)
+                    self.my = np.random.normal(0, self.msigma) - self.detect(self.dt)
+                    self.mz = np.random.normal(0, self.msigma)
                     self.dt += 0.1
                     return np.array([self.mx,self.my,self.mz])
                 def detect(self, dt):
                     auto = 0.0
-                    if dt < 2:
-                        auto = 10.0
-                    elif dt >= 2 and dt <= 4:
-                        auto = -10.0
+                    if dt < 10:
+                        auto = 0
+                        # auto = 10.0
+                    elif dt >= 10 and dt <= 20:
+                        auto = 0
+                        # auto = -10.0
                     else:
                         auto = 0  # 直行
                     return auto
@@ -524,19 +544,21 @@ class BattlefieldVisualizer:
             [], [], "r^", markersize=4, alpha=0.5, label="动力学预测"
         )
         (self.kalmpos,) = self.ax.plot(
-            [], [], "bX", markersize=4, alpha=0.5, label="卡尔曼融合"
+            [], [], "bX", markersize=4, alpha=0.2, label="卡尔曼融合"
         )
 
         # 误差统计图表
         self.error_ax.set_title("误差")
-        self.error_ax.set_xlabel("时间步")
+        self.error_ax.set_xlabel("时间步 (t)")
         self.error_ax.set_ylabel("误差 (m)")
+        self.error_ax.set_xlim(0, 400)
+        self.error_ax.set_ylim(-300, 300)
 
         (self.math_gps,) = self.error_ax.plot(
-            [], [], "k.", markersize=4, alpha=0.3, label="MATH-GPS"
+            [], [], "k.", markersize=4, alpha=0.5, label="MATH-GPS"
         )
         (self.kalm_gps,) = self.error_ax.plot(
-            [], [], "r.", markersize=4, alpha=0.3, label="KALM-GPS"
+            [], [], "r.", markersize=4, alpha=0.5, label="KALM-GPS"
         )
 
 
@@ -547,8 +569,10 @@ class BattlefieldVisualizer:
         self.math_pos = []
         self.kalm_pos = []
 
-        self.math_gps_pos = []
-        self.kalm_gps_pos = []
+        self.math_gps_pos = 0
+        self.kalm_gps_pos = 0
+        self.time_math_gps_pos = []
+        self.time_kalm_gps_pos = []
 
         # 图例
         self.ax.legend(loc="upper right", fontsize=8)
@@ -578,7 +602,7 @@ class BattlefieldVisualizer:
                 self.color.append("black")
             else:
                 self.color.append("yellow")
-                print("yellow")
+                # print("yellow")
         else:
             carpos = sim.mycar.carUpdate(self.pos[0][0], self.pos[0][1])
             self.gps_pos.append(carpos)
@@ -607,10 +631,16 @@ class BattlefieldVisualizer:
         #计算误差
         m_p = np.array(prev)-np.array(carpos)
         m_p = m_p.tolist()
-        self.math_gps_pos.append(m_p)
-        k_p = np.array(updatav)-np.array(carpos)
+
+        k_p = np.array(updatav) - np.array(carpos)
         k_p = k_p.tolist()
-        self.kalm_gps_pos.append(k_p)
+        print("carpos", self.poscont, m_p)
+        if(self.posSt[self.poscont]==1):
+            self.math_gps_pos=np.sqrt(m_p[0]**2+m_p[1]**2)
+            self.kalm_gps_pos=np.sqrt(k_p[0]**2+k_p[1]**2)
+        else:
+            self.math_gps_pos = -10
+            self.kalm_gps_pos = 0
 
         # 更新绘图数据
         gps_pos = np.array(self.gps_pos)
@@ -623,9 +653,13 @@ class BattlefieldVisualizer:
         kalm_pos = np.array(self.kalm_pos)
         self.kalmpos.set_data(kalm_pos[:,0], kalm_pos[:,1])
 
-        math_gps_pos = np.array(self.math_gps_pos)
+
+        self.time_math_gps_pos.append([self.poscont,self.math_gps_pos])
+        math_gps_pos = np.array(self.time_math_gps_pos)
         self.math_gps.set_data(math_gps_pos[:,0], math_gps_pos[:,1])
-        kalm_gps_pos = np.array(self.kalm_gps_pos)
+
+        self.time_kalm_gps_pos.append([self.poscont, self.kalm_gps_pos])
+        kalm_gps_pos = np.array(self.time_kalm_gps_pos)
         self.kalm_gps.set_data(kalm_gps_pos[:,0], kalm_gps_pos[:,1])
 
         AccX = sim.mynw.myQua.AccX
